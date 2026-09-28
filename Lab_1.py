@@ -90,7 +90,16 @@ update(params, state, x, y, lr) -> (params, state).
 The state carries anything remembered between steps (None if nothing).
 '''
 
-'''          GRADIENT DESCENT         '''
+'''         
+
+GRADIENT DESCENT:
+
+Regular gradient descent calculates the gradient over the whole training dataset,
+and subtracts (learning rate)*(gradient) from the parameters. This is done over many
+epochs to optimize weights.
+
+
+'''
 def gd_init(params):
     return None                      # No state
 
@@ -100,7 +109,18 @@ def gd_update(params, state, x, y, lr):
     return jax.tree_util.tree_map(lambda p, g: p - lr * g, params, grads), state
 
 
-'''    STOCHASTIC GRADIENT DESCENT    '''
+'''   
+
+STOCHASTIC GRADIENT DESCENT:
+
+Stochastic gradient descent calculates the gradient over random subsets of the 
+training dataset, and subtracts (learning rate) * (gradient) from the parameters. 
+This allows for many more gradient updates for the same amount of forward passes,
+meaning faster convergence. 
+
+
+'''
+
 sgd_init = gd_init
 
 @jax.jit  # Compiles the whole step
@@ -109,7 +129,18 @@ def sgd_update(params, state, x, y, lr): # SAME as gd_update, only difference is
     return jax.tree_util.tree_map(lambda p, g: p - lr * g, params, grads), state
 
 
-'''         SGD WITH MOMENTUM         '''
+'''         
+
+SGD WITH MOMENTUM:        
+
+Calculates the gradient over random subsets of the training dataset. Instead of 
+simply subtracting a multiple of the gradient, we subtract a learning rate times 
+the "velocity", which is the gradient plus an accumulating momentum vector. "Beta" is
+a number between 0 and 1 that decays the velocity/momentum in the presence of no gradient 
+so it comes to a stop.
+
+
+'''
 BETA = 0.9                           # Fraction of the previous velocity kept each step
 
 def momentum_init(params):
@@ -123,7 +154,19 @@ def momentum_update(params, velocity, x, y, lr):
     return params, velocity
 
 
-'''              ADAGRAD              '''
+'''              
+
+ADAGRAD:
+
+Stands for 'adaptive gradient descent'. It scales the learning rate for each parameter 
+based on past gradients instead of having one constant learning rate. It allows the network 
+to learn from more rare signals that would not be picked up by SGD. Uses batch training like 
+SGD for convergence speed. Learning rates are divided by the square root of the sum of squares 
+of the previous gradients (s). This method has the disadvantage of diminishing learning rates 
+because the sum in the denom (s) always increases. 
+
+
+'''
 EPS = 1e-8      # Avoids dividing by zero 
 
 def adagrad_init(params):
@@ -137,7 +180,18 @@ def adagrad_update(params, sum_sq, x, y, lr):
     return params, sum_sq
 
 
-'''               ADAM               '''
+'''               
+
+ADAM:               
+
+Adam stands for 'adaptive moment estimation'. It combines momentum with adaptive learning 
+rates that use an exponential moving average as opposed to a strict sum. This way, 
+it is able to capture rare features and find a deeper minimum without risking learning rate 
+collapse. First moment is the moving avg of gradients (like velocity) and second moment is the 
+avg of squared gradients (like s). 
+
+
+'''
 BETA1 = 0.9     # Decay rate of the running mean of gradients (momentum)
 BETA2 = 0.999   # Decay rate of the running mean of squared gradients (per-parameter scale)
 
@@ -159,12 +213,21 @@ def adam_update(params, state, x, y, lr):
     return params, (m, v, t)
 
 
-'''               MUON               '''
-'''
-Muon treats each hidden weight matrix as a whole: it takes the momentum of the gradient
-and replaces it with the nearest orthogonal matrix (all singular values set to 1), so
-every direction in the matrix moves by the same amount. That only makes sense for
-hidden matrices, so biases and the 1x128 / 128x1 input/output matrices use Adam.
+'''               
+
+MUON:               
+
+Muon is an optimizer only for hidden layers that have square weight matrices. It treats
+weight matrices as 2D linear operators, orthogonalizes the update matrix with approximate 
+methods, and then scales each of its eigenvalues to 1 via a linear transformation so that 
+updates will act on each principal direction (just its eigenvectors) equally. This allows 
+for better stability at high learning rates, faster convergence, and runs fast because it 
+uses basic matrix multiplication. 
+
+The method below uses Adam for input/output layers because their matrices are not square, 
+so it is a hybrid model. 
+
+
 '''
 MUON_MOMENTUM = 0.95
 MUON_ADAM_LR = 0.003            # Learning rate for the parameters handled by Adam
@@ -230,13 +293,13 @@ def train(init_fn, update_fn, batch_size, n_epochs=n_epochs, lr=lr):
     """Same init and shuffle seed for every run, so only the optimizer/batch size differs."""
     params = init_mlp(jax.random.key(1), layer_sizes)
     opt_state = init_fn(params)
-    key = jax.random.key(2)            # Use a separate key for shuffling
+    key = jax.random.key(2)                   # Use a separate key for shuffling
     losses = []
 
     for epoch in range(n_epochs):
         key, k = jax.random.split(key)
         perm = jax.random.permutation(k, n)   # Random ordering for shuffle
-        X_shuf, Y_shuf = X[perm], Y[perm]    # Permute X and Y indices to shuffle for training
+        X_shuf, Y_shuf = X[perm], Y[perm]     # Permute X and Y indices to shuffle for training
 
         for i in range(0, n, batch_size):
             xb = X_shuf[i : i + batch_size]
