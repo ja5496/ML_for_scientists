@@ -15,11 +15,9 @@ print("jax", jax.__version__, "| devices:", jax.devices())
 ###########################################################
 
 '''
-Every training example is a different function, drawn from a Gaussian process with a
-random lengthscale. The network only sees a handful of noisy points from each one, so
-nothing about any one function can be stored in the weights: it has to work it out in
-context. Since the functions come from a GP, the best possible answer is known exactly
-(gp_posterior), which gives us something to compare against.
+Every training example is a different function drawn from a Gaussian process with a
+random lengthscale. 
+
 '''
 
 X_MAX = 2.0
@@ -33,7 +31,7 @@ def rbf(x1, x2, ell):
 
 
 def sample_tasks(key, batch, n_ctx, n_tgt=32, ell=None, x_tgt=None):
-    """Draw `batch` random functions, each observed (with noise) at n_ctx context and n_tgt target points.
+    """Draw `batch` random functions, each observed at n_ctx context and n_tgt target points.
     Returns xc, yc: (batch, n_ctx)   xt, yt: (batch, n_tgt)   ell: (batch,)"""
     k_ell, k_xc, k_xt, k_y = jax.random.split(key, 4)
     if ell is None:
@@ -51,7 +49,7 @@ def sample_tasks(key, batch, n_ctx, n_tgt=32, ell=None, x_tgt=None):
 
 
 def gp_posterior(xc, yc, xt, ell):
-    """Exact GP prediction at xt given (xc, yc), if you knew the lengthscale.
+    """Exact prediction at xt given (xc, yc) if we knew the lengthscale of the GP.
     Returns mean: (b, n_tgt), cov: (b, n_tgt, n_tgt)"""
     ell = jnp.broadcast_to(jnp.asarray(ell, jnp.float32), (xc.shape[0],))
     Kcc = rbf(xc, xc, ell) + NOISE_STD**2 * jnp.eye(xc.shape[1])
@@ -70,20 +68,6 @@ print(f"GP error, 10 points, true ell : {float(((mean - yt) ** 2).mean()):.4f}")
 
 
 grid = jnp.linspace(-X_MAX, X_MAX, 400)
-'''
-fig, axes = plt.subplots(1, 3, figsize=(10, 2.6), sharey=True)
-for ax, ell_, key in zip(axes, [0.2, 0.45, 1.0], jax.random.split(jax.random.key(1), 3)):
-    xc, yc, xt, yt, _ = sample_tasks(key, 1, n_ctx=10, ell=ell_, x_tgt=grid)
-    mean, cov = gp_posterior(xc, yc, grid[None], ell_)
-    std = jnp.sqrt(jnp.diagonal(cov[0]))
-    ax.fill_between(np.array(grid), np.array(mean[0] - 2 * std), np.array(mean[0] + 2 * std), color="#e4e4e0")
-    ax.plot(np.array(grid), np.array(yt[0]), color="#b8b8b4", lw=1)
-    ax.plot(np.array(grid), np.array(mean[0]), color="#0b0b0b", lw=1.6)
-    ax.scatter(np.array(xc[0]), np.array(yc[0]), s=14, color="#0b0b0b", zorder=3)
-    ax.set_title(f"lengthscale {ell_}", fontsize=10); ax.set_xlabel("x")
-axes[0].set_ylabel("y"); plt.tight_layout(); plt.show()
-'''
-
 
 ###########################################################
 #                        ATTENTION                        #
@@ -91,12 +75,8 @@ axes[0].set_ylabel("y"); plt.tight_layout(); plt.show()
 
 '''
 
-TOKENS:
-
 Every observed point becomes a token (x, y, 1), and every point where we want a prediction
-becomes a token (x, 0, 0). The last entry is a flag, so the network can tell a target apart
-from a context point that just happens to have y = 0.
-
+becomes a token (x, 0, 0). The last entry tells whether the token is context (1) or target (0).
 
 '''
 
@@ -109,20 +89,9 @@ def make_tokens(xc, yc, xt):
 
 '''
 
-THE MASK:
-
-mask[i, j] says whether token i may look at token j. Here every token looks at the context
-tokens only:
-
-    - Targets look at the context, which is where all the information about the function is.
-    - Targets do NOT look at other targets. A target token carries no y, so there is nothing
-      to learn from it, and if targets talked to each other the prediction at one x would
-      depend on which other x's we happened to ask about. With this mask, each target's
-      prediction depends only on its own x and the context, so we can query 1 point or
-      1000 points and get the same answer at each one.
-    - Context tokens don't look at targets either, for the same reason.
-
-A target still knows its own x, since it is carried along by the residual connection.
+mask[i, j] says whether token i may look at token j. Every token looks at the context
+tokens only (and itself). A target still knows its own x, since it is carried along 
+by the residual connection.
 
 
 '''
@@ -135,18 +104,17 @@ def make_mask(n_ctx, n_tgt):
 
 '''
 
-MULTI-HEAD SELF-ATTENTION:
+MULTI-HEAD ATTENTION:
 
-Every token makes a query (what am I looking for?), a key (what do I have?) and a value
-(what do I pass on?). Token i's output is a weighted average of the values of the tokens
+Every token makes a query, a key and a value (all 16-dim), which are all just vectors that formed from
+learned linear maps from the 64-dim embedding. Token i's output is a weighted average of the values of the tokens
 it is allowed to look at, with weights softmax(q_i . k_j / sqrt(d_head)), so tokens whose
-keys match its query count the most. Splitting the width into several smaller heads lets
-each head look for something different (e.g. nearby points vs. the overall size of the
-function). The heads are glued back together and mixed by one last matrix, Wo.
+keys match its query count the most. Splitting into several heads lets each head look for something different. 
+The heads are glued back together and mixed by one last matrix "Wo".
 
 
 '''
-N_HEADS = 4
+N_HEADS = 4 # Attention heads per layer
 
 def init_attention(key, d):
     keys = jax.random.split(key, 4)
@@ -161,8 +129,8 @@ def attention_weights(params, h, mask):
     """h: (b, n, d), mask: (n, n) -> (b, heads, n, n), row i = how much token i looks at each token j"""
     q, k = split_heads(h @ params["Wq"]), split_heads(h @ params["Wk"])
     scores = jnp.einsum("bihd,bjhd->bhij", q, k) / jnp.sqrt(q.shape[-1])
-    scores = jnp.where(mask, scores, -jnp.inf)          # Forbidden pairs get exactly zero weight after the softmax
-    return jax.nn.softmax(scores, axis=-1)              # Each row sums to 1
+    scores = jnp.where(mask, scores, -jnp.inf)          # Masked pairs get exactly zero weight after the softmax
+    return jax.nn.softmax(scores, axis=-1)              # Ensure each row sums to 1
 
 def attention(params, h, mask):
     """h: (b, n, d), mask: (n, n) -> (b, n, d)"""
@@ -174,14 +142,13 @@ def attention(params, h, mask):
 
 '''
 
-TRANSFORMER BLOCK:
+TRANSFORMER BLOCK: {Layer norm -> attention -> residual} --> {layer norm -> MLP -> residual} 
 
-Layer norm -> attention -> residual, then layer norm -> MLP -> residual. Attention is the
-only place where tokens exchange information; the MLP then processes each token on its own.
+Attention is where tokens exchange information, then the MLP processes each token on its own.
 The residual connections mean each block only has to learn a correction to what it is given,
 and the layer norms keep every token at a sensible scale no matter how deep we go.
 
-The MLP inside the block is the same one as Lab 1, with a GELU (a smooth ReLU) activation.
+The MLP inside uses a GELU activation.
 
 
 '''
@@ -231,10 +198,10 @@ def block(params, h, mask):
 
 '''
 Embed every token with a small MLP, run them through a stack of transformer blocks, and
-read out a mean and a log-variance at each target token. Predicting a variance as well
-as a mean lets the model say how unsure it is (e.g. far from any context point).
+read out a mean and a log-variance at each target token. Predicts a variance and a mean 
+as an uncertainty (should increase w/ distance from nearest contexts)
 
-Note there is no positional encoding: the transformer sees the context as a SET of points.
+Permutation invariance of context points: each token acted on by the same function.
 '''
 D_MODEL = 64
 N_LAYERS = 4
@@ -258,13 +225,9 @@ def transformer(params, xc, yc, xt):
 
 
 '''
-
-LOSS:
-
-Gaussian negative log-likelihood of the targets under the predicted mean and variance.
-The (y - mean)^2 / var term punishes being wrong, more so when the model claimed to be
-sure, and the log(var) term stops it from just claiming a huge variance everywhere.
-
+LOSS: Gaussian negative log-likelihood of the targets under the predicted mean and variance.
+The (y - mean)^2 / var term punishes being wrong especially for low variance (the model was wrong 
+and overconfident) but the log(var) term stops it from just claiming a huge variance everywhere.
 
 '''
 
@@ -281,16 +244,11 @@ def loss_fn(params, model, xc, yc, xt, yt):
 ###########################################################
 
 '''
-The MLP gets the same job, but has no idea that the context is a set. The context is
-flattened into one long vector, zero-padded up to 30 points, with a 0/1 mask so it can tell
-padding apart from a real point at (0, 0), and the query x is appended at the end. Each
-target gets its own forward pass.
+The MLP gets the same job. The context is flattened into one long vector, zero-padded up to 30 points, with 
+a 0/1 mask so it can tell padding apart from a real point at (0, 0), and the query x is appended at the end. 
+Each target gets its own forward pass.
 
-Two things are built into the transformer that the MLP has to do without:
-    - It has to LEARN that the order of the context points doesn't matter.
-    - It has a fixed number of input slots, so it can never use more than 30 points.
 
-Sizes are picked so it has about as many parameters as the transformer.
 '''
 MAX_CTX = 30
 
@@ -318,14 +276,11 @@ def mlp_model(params, xc, yc, xt):
 
 '''
 
-ADAM (from Lab 1), with two additions that help transformers train smoothly:
-
-    - Learning rate schedule: a linear warmup for the first steps (Adam's second moment
-      estimate is poor early on, so big early steps can blow up), then a cosine decay
+ADAM with two additions:
+    - Learning rate schedule: a linear warmup for the first steps, then a cosine decay
       to zero, so the last steps are small and the model settles into a minimum.
     - Gradient clipping: if the gradient norm is bigger than 1, scale it down to 1.
-      The NLL can spike when the model is very sure and very wrong, and this stops one
-      bad batch from undoing a lot of training.
+      This stops one bad batch from undoing a lot of training.
 
 
 '''
@@ -369,8 +324,7 @@ def adam_update(params, grads, state):
 
 '''
 Every step draws a brand new batch of functions, with a random number of context points
-between 3 and 30, and 32 targets. The model never sees the same function twice, so there
-is nothing to memorize and no overfitting: it can only get better at the inference itself.
+between 3 and 30, and 32 targets. The model never sees the same function twice.
 
 The number of context points changes the shapes, so jax.jit compiles the step once per
 value (28 of them), and then reuses it.
