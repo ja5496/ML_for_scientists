@@ -17,8 +17,12 @@ Because the sub-networks run at different speeds, their outputs are "held" so th
 has a value at every 2.5-ms frame, without ever peeking at the future. This is the most
 bug-prone part of the project and has its own test (test_causality.py).
 
-PSEUDOCODE FOR THE IMPLEMENTING AGENT
--------------------------------------
+IMPLEMENTATION STATUS: init_dbn, forward, hold_to_base IMPLEMENTED (tested in test_dbn.py).
+The streaming (one-frame-at-a-time) version below is still pseudocode (stage 6, enhance_stream.py).
+Attention plugs in as a callable attn(F_native, lsn, hop_ms) -> (F_att, F_rej, beliefs).
+
+DESIGN NOTES
+------------
 Indexing (Bellur's notation): LSN (g, z), layer g = 1..4, position z = 1..2^(g-1).
     parent(g, z) = (g-1, ceil(z/2))
     z odd  -> left child  -> pool = CFG.dbn.pool_left  (1)
@@ -68,6 +72,7 @@ Cost accounting (report in the paper/poster):
 import jax
 import jax.numpy as jnp
 
+import dbn_crbm
 from config import CFG
 
 
@@ -104,17 +109,56 @@ def receptive_field_frames(g: int, z: int, width: int = CFG.dbn.basis_width) -> 
     return receptive_field_frames(pg, pz, width) + (width - 1) * r_in + (pool_of(g, z) - 1) * r_in
 
 
+def input_channels(g: int, z: int) -> int:
+    return CFG.audio.n_bands if g == 1 else CFG.dbn.units_per_lsn
+
+
+def visible_type(g: int, z: int) -> str:
+    return "gaussian" if g == 1 else "bernoulli"
+
+
 def init_dbn(key) -> dict:
-    raise NotImplementedError
+    keys = jax.random.split(key, len(lsn_ids()))
+    return {lsn: dbn_crbm.init_crbm(k, input_channels(*lsn)) for lsn, k in zip(lsn_ids(), keys)}
 
 
 def hold_to_base(y_native: jnp.ndarray, rate: int, T: int) -> jnp.ndarray:
-    """Causal zero-order hold from an LSN's native rate to the base frame rate."""
-    raise NotImplementedError
+    """Causal zero-order hold: (..., C, T_native) -> (..., C, T). Base frame t sees slow frame floor((t+1)/R) - 1."""
+    if rate == 1:
+        return y_native[..., :T]
+    k = (jnp.arange(T) + 1) // rate - 1
+    ok = (k >= 0) & (k < y_native.shape[-1])
+    held = jnp.take(y_native, jnp.clip(k, 0, y_native.shape[-1] - 1), axis=-1)
+    return jnp.where(ok, held, 0.0)
 
 
-def forward(params: dict, feats_fb: jnp.ndarray, attn=None, memories=None) -> dict:
-    raise NotImplementedError
+def forward(params: dict, feats_fb: jnp.ndarray, attn=None, upto: tuple = None) -> dict:
+    """Upward pass through the tree. feats_fb: (B, 64, T) z-scored log-gammatone energies.
+
+    Returns {lsn: dict(F_native, F_att_native, F_rej_native, beliefs_native)} at each LSN's own rate.
+    Children always receive the parent's ATTENDED output (= raw output when attn is None).
+    `upto`: stop after this LSN (used during layer-wise pretraining). Only LSNs present in `params` run.
+    """
+    out = {}
+    for lsn in lsn_ids():
+        if lsn not in params:
+            continue
+        g, z = lsn
+        v = feats_fb if g == 1 else out[parent(g, z)]["F_att_native"]
+        F = dbn_crbm.encode(params[lsn], v, pool_of(g, z))
+        if attn is not None:
+            F_att, F_rej, beliefs = attn(F, lsn, 2.5 * rate_of(g, z))
+        else:
+            F_att, F_rej, beliefs = F, None, None
+        out[lsn] = dict(F_native=F, F_att_native=F_att, F_rej_native=F_rej, beliefs_native=beliefs)
+        if lsn == upto:
+            break
+    return out
+
+
+def to_base_rate(out: dict, T: int, key: str = "F_att_native") -> dict:
+    """Align every LSN's output (or rejected stream / beliefs) to the 2.5-ms base frames, causally."""
+    return {lsn: hold_to_base(o[key], rate_of(*lsn), T) for lsn, o in out.items() if o.get(key) is not None}
 
 
 if __name__ == "__main__":

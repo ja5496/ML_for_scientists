@@ -19,8 +19,10 @@ code never needs to know which model it is scoring.
 
 IMPLEMENTATION STATUS
 ---------------------
-IMPLEMENTED: A (no processing), B (MCTR), C (RNN-3), D (RNN-stream), I (ideal mask).
-STILL PSEUDOCODE: E, F, G, H — they need the pretrained belief network (stage 2–4) and H's size.
+IMPLEMENTED: all nine. A (no processing), B (MCTR), C (RNN-3), D (RNN-stream), I (ideal mask);
+E (RNN-stream widened to H's total size: trainable mask net + frozen belief network);
+F, G, H read the frozen belief network (runs/dbn/) and, for F and H, the memories + online attention.
+Every learned variant is exposed as predict(params, aux, x) -> masks, where aux holds the frozen arrays.
 
 Shared interface: `process(variant, mix)` returns the processed mixture y AND the same processing applied
 separately to the clean speech (s_hat) and to the transient (v_hat) — "shadow filtering" — so evaluation
@@ -60,13 +62,17 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import attention_feedback as af
 import baseline_mctr
+import dbn_distributed as dd
 import frontend_gammatone as fe
 import mask_estimator_lstm as ml
 from config import CFG, VARIANTS
 
-MODES = {"C": "window3", "D": "stream"}
+MODES = {"C": "window3", "D": "stream", "E": "stream", "F": "dbn", "G": "dbn", "H": "dbn"}
 NEURAL = set(MODES)
+DBN_VARIANTS = {"F": dict(fb=False, attn=True), "G": dict(fb=True, attn=False), "H": dict(fb=True, attn=True)}
+K_SPEECH, K_TRANS = 4, 2                      # must match local_memory.K_SPEECH / K_TRANS
 BUCKET = 8_000                     # pad utterances to multiples of 0.5 s so jit compiles only a few shapes
 
 
@@ -100,6 +106,10 @@ class Trained:
     def mode(self):
         return MODES[self.variant]
 
+    @property
+    def aux(self):
+        return build_aux(self.variant, self.stats)
+
     def save(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         to_np = lambda t: jax.tree_util.tree_map(np.asarray, t)
@@ -112,9 +122,94 @@ class Trained:
         return Trained(d["variant"], to_j(d["params"]), to_j(d["stats"]))
 
 
+###########################################################
+#            BELIEF-NETWORK FRONT END (F, G, H)           #
+###########################################################
+
+_FROZEN = {}
+_DBN_DIR = None
+
+
+def set_dbn_dir(path: Path):
+    """Point every belief-network variant at a different trained DBN (e.g. the smoke-test one)."""
+    global _DBN_DIR
+    _DBN_DIR = Path(path)
+
+
+def load_frozen(dbn_dir: Path = None) -> dict:
+    """Frozen belief network + memories as a pytree of arrays (cached)."""
+    from dbn_pretrain import DBN_DIR, load_dbn
+    dbn_dir = Path(dbn_dir or _DBN_DIR or DBN_DIR)
+    if dbn_dir not in _FROZEN:
+        params, stats = load_dbn(dbn_dir)
+        mem_path = dbn_dir / "memories.pkl"
+        Ws = None
+        if mem_path.exists():
+            mem = pickle.load(open(mem_path, "rb"))
+            Ws = {f"{g}{z}": jnp.asarray(af.memory_matrix(mem[(g, z)])[0]) for (g, z) in params}
+        _FROZEN[dbn_dir] = {"dbn": {f"{g}{z}": p for (g, z), p in params.items()}, "dbn_stats": stats, "W": Ws}
+    return _FROZEN[dbn_dir]
+
+
+def dbn_inputs(variant: str, aux: dict, x: jnp.ndarray) -> tuple:
+    """Waveform (B, N) -> (fb (B,T,64) or None, Z (B,T,L,C), beliefs (B,T,L,3) or None). All causal."""
+    from dbn_pretrain import dbn_features
+    cfg = DBN_VARIANTS[variant]
+    fb = features(x, aux["fb_stats"])
+    T = fb.shape[1]
+    params = {(int(k[0]), int(k[1:])): v for k, v in aux["dbn"].items()}
+    attn = None
+    if cfg["attn"]:
+        attn = lambda F, lsn, hop: af.apply(F, (aux["W"][f"{lsn[0]}{lsn[1]}"], K_SPEECH, K_TRANS), hop)
+    out = dd.forward(params, dbn_features(x, aux["dbn_stats"]), attn)
+    lsns = [l for l in dd.lsn_ids() if l in out]
+    hold = lambda a, l: dd.hold_to_base(a, dd.rate_of(*l), T)
+    if cfg["attn"]:
+        Z = [jnp.concatenate([hold(out[l]["F_att_native"], l), hold(out[l]["F_rej_native"], l)], axis=1) for l in lsns]
+        bel = jnp.stack([hold(out[l]["beliefs_native"], l) for l in lsns], axis=1)          # (B, L, 3, T)
+        bel = jnp.concatenate([jnp.log1p(bel[:, :, :2]), bel[:, :, 2:]], axis=2)
+        bel = jnp.transpose(bel, (0, 3, 1, 2))
+    else:
+        Z = [hold(out[l]["F_native"], l) for l in lsns]
+        bel = None
+    Z = jnp.transpose(jnp.stack(Z, axis=1), (0, 3, 1, 2))                                   # (B, T, L, C)
+    return (fb if cfg["fb"] else None), Z, bel
+
+
+###########################################################
+#                 PREDICT / INIT per variant              #
+###########################################################
+
+def predict(variant: str, params: dict, aux: dict, x: jnp.ndarray) -> jnp.ndarray:
+    """Masks (B, T, 64) for any learned variant. aux = {"fb_stats", and for F/G/H "dbn", "dbn_stats", "W"}."""
+    if MODES[variant] == "dbn":
+        return ml.run_dbn_stream(params, *dbn_inputs(variant, aux, x))[0]
+    return ml.apply(params, features(x, aux["fb_stats"]), MODES[variant])
+
+
+def build_aux(variant: str, fb_stats: dict, dbn_dir: Path = None) -> dict:
+    aux = {"fb_stats": fb_stats}
+    if variant in DBN_VARIANTS:                          # E uses the frozen DBN only for sizing (init_params)
+        aux.update(load_frozen(dbn_dir))
+    return aux
+
+
+def init_params(variant: str, key, dbn_dir: Path = None) -> dict:
+    if variant in ("C", "D"):
+        return ml.init_mask_net(key, CFG.audio.n_bands)
+    fr = load_frozen(dbn_dir)
+    n_lsn = len(fr["dbn"])
+    if variant == "E":
+        target = ml.count_params(init_params("H", key, dbn_dir)) + ml.count_params(fr["dbn"])
+        return ml.init_mask_net(key, CFG.audio.n_bands, size_matched_width(target))
+    cfg = DBN_VARIANTS[variant]
+    c = CFG.dbn.units_per_lsn * (2 if cfg["attn"] else 1)
+    return ml.init_dbn_mask_net(key, n_lsn, c, use_fb=cfg["fb"], use_beliefs=cfg["attn"])
+
+
 @partial(jax.jit, static_argnums=(0,))
-def _masks_jit(mode, params, stats, x):
-    return ml.apply(params, features(x, stats), mode)
+def _masks_jit(variant, params, aux, x):
+    return predict(variant, params, aux, x)
 
 
 def neural_masks(model: Trained, xs: list, batch: int = 16) -> list:
@@ -127,7 +222,7 @@ def neural_masks(model: Trained, xs: list, batch: int = 16) -> list:
         xb = np.zeros((batch, L), np.float32)                        # fixed batch size -> fewer recompiles
         for r, j in enumerate(idx):
             xb[r, : len(xs[j])] = xs[j]
-        M = np.asarray(_masks_jit(model.mode, model.params, model.stats, jnp.asarray(xb)))
+        M = np.asarray(_masks_jit(model.variant, model.params, model.aux, jnp.asarray(xb)))
         for r, j in enumerate(idx):
             out[j] = M[r, : fe.n_frames(len(xs[j]))]
     return out
@@ -159,7 +254,7 @@ def process_batch(variant: str, mixes: list, model: Trained = None) -> list:
     if variant in NEURAL:
         assert model is not None and model.variant == variant
         return [_shadow(m, M) for m, M in zip(mixes, neural_masks(model, [m["x"] for m in mixes]))]
-    raise NotImplementedError(f"variant {variant} ({VARIANTS[variant][0]}) needs the belief network (stage 4)")
+    raise ValueError(f"unknown variant {variant}")
 
 
 def size_matched_width(target_params: int) -> tuple:

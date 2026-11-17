@@ -418,13 +418,75 @@ def build_transient_packs(seed: int = D.seed):
 
 
 ###########################################################
+#          BELIEF-NETWORK PRETRAINING AUDIO (stage 2)     #
+###########################################################
+
+LIBRISPEECH_DEV_CLEAN = "https://www.openslr.org/resources/12/dev-clean.tar.gz"
+
+
+def build_pretrain_packs(speech_hours: float = 3.0, sound_hours: float = 4.0, music_hours: float = 2.0,
+                         seed: int = D.seed):
+    """Unlabelled everyday audio for the belief network (Bellur's 3 h speech + 4 h sounds + 2 h music).
+
+    speech: LibriSpeech dev-clean (talkers disjoint from VCTK).
+    sounds / music: FSD50K eval clips that carry NONE of the transient labels — so no transient used
+    anywhere in testing (or training) is ever heard during pretraining.
+    """
+    import tarfile
+    rng = np.random.default_rng(seed + 3)
+    # ---- speech ----
+    tgz = download(LIBRISPEECH_DEV_CLEAN, D.librispeech_dir / "dev-clean.tar.gz")
+    clips, meta, total = [], [], 0.0
+    with tarfile.open(tgz, "r:gz") as tf:
+        for m in tf:
+            if not m.name.endswith(".flac"):
+                continue
+            x, fs = sf.read(io.BytesIO(tf.extractfile(m).read()), dtype="float32")
+            clips.append(to_mono_16k(x, fs)); meta.append(dict(file=m.name, license="CC BY 4.0 (LibriSpeech)"))
+    order = rng.permutation(len(clips))
+    keep = []
+    for i in order:
+        if total >= speech_hours * 3600:
+            break
+        keep.append(i); total += len(clips[i]) / 16_000
+    save_pack(D.cache_dir / "pretrain_speech.npz", [clips[i] for i in keep], [meta[i] for i in keep])
+    print(f"  pretrain_speech: {len(keep)} clips, {total / 3600:.2f} h")
+    # ---- sounds + music from FSD50K eval (already on disk) ----
+    gt_dir = next(D.fsd50k_dir.glob("**/vocabulary.csv")).parent
+    zpath = D.fsd50k_dir / "FSD50K.eval_audio.merged.zip"
+    rows = list(csv.DictReader(open(gt_dir / "eval.csv")))
+    banned = set(D.transient_classes)
+    music, sounds = [], []
+    for r in rows:
+        labels = set(r["labels"].split(","))
+        if labels & banned:
+            continue
+        (music if "Music" in labels else sounds).append(r["fname"])
+    with zipfile.ZipFile(zpath) as z:
+        names = {Path(n).stem: n for n in z.namelist() if n.endswith(".wav")}
+        for group, fnames, hours in (("sounds", sounds, sound_hours), ("music", music, music_hours)):
+            clips, meta, total = [], [], 0.0
+            for f in rng.permutation(fnames):
+                if total >= hours * 3600:
+                    break
+                x, fs = sf.read(io.BytesIO(z.read(names[f])), dtype="float32")
+                x = to_mono_16k(x, fs)
+                if len(x) < 8_000 or np.abs(x).max() < 1e-4:
+                    continue
+                clips.append(x); meta.append(dict(file=f"eval/{f}.wav", license="see FSD50K metadata"))
+                total += len(x) / 16_000
+            save_pack(D.cache_dir / f"pretrain_{group}.npz", clips, meta)
+            print(f"  pretrain_{group}: {len(clips)} clips, {total / 3600:.2f} h  (from {len(fnames)} eligible)")
+
+
+###########################################################
 #                          MAIN                           #
 ###########################################################
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="only test host reachability")
-    ap.add_argument("--only", choices=["speech", "transients"], default=None)
+    ap.add_argument("--only", choices=["speech", "transients", "pretrain"], default=None)
     args = ap.parse_args()
     reachable = check_hosts()
     if args.check:
@@ -435,3 +497,5 @@ if __name__ == "__main__":
         build_speech_packs()
     if args.only in (None, "transients"):
         build_transient_packs()
+    if args.only in (None, "pretrain"):
+        build_pretrain_packs()

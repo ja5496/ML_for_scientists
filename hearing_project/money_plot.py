@@ -105,9 +105,10 @@ def _style_axes(ax):
     ax.set_axisbelow(True)
 
 
-def make_money_plot(from_results: bool = False, out_path: Path = Path(__file__).parent / "figures" / "money_plot_sketch.png"):
+def make_money_plot(from_results: bool = False, out_path: Path = Path(__file__).parent / "figures" / "money_plot_sketch.png",
+                    run_dir: Path = None):
     if from_results:
-        raise NotImplementedError("Load runs/results/*.csv as described in the module docstring.")
+        return make_money_plot_from_results(run_dir)
 
     curves, irm_pt = sketch_tradeoff()
     strs, stoi = sketch_stoi_vs_str()
@@ -197,6 +198,111 @@ def make_money_plot(from_results: bool = False, out_path: Path = Path(__file__).
                  x=0.5, y=1.03, fontsize=12.5, color="#b8322f", fontweight="bold")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
+
+
+###########################################################
+#                 THE SAME FIGURE, FROM REAL DATA         #
+###########################################################
+
+def _x_at(curve, y_ref):
+    """Transient attenuation where a frontier crosses speech-preserved = y_ref (linear interpolation)."""
+    c = curve.sort_values("p")
+    xs, ys = c.ta_db_mean.to_numpy(), c.sp_mean.to_numpy()
+    for i in range(len(xs) - 1):
+        if (ys[i] - y_ref) * (ys[i + 1] - y_ref) <= 0 and ys[i] != ys[i + 1]:
+            return xs[i] + (y_ref - ys[i]) * (xs[i + 1] - xs[i]) / (ys[i + 1] - ys[i])
+    return np.nan
+
+
+def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__file__).parent / "figures" / "money_plot_results.png"):
+    """Left: attenuation-vs-speech frontier (unseen transients, STR -15 dB). Right: STOI vs STR (unseen)."""
+    import pandas as pd
+    from config import CFG
+    run_dir = Path(run_dir or CFG.out_dir / "stage1")
+    smoke = run_dir.name == "smoke"
+    if smoke:                                   # never let a smoke-test figure land where real results go
+        out_path = run_dir / "money_plot_SMOKE.png"
+    to = pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv")
+    sm = pd.read_csv(run_dir / "stage4_summary.csv")
+    cell = lambda v, cond="unseen", st=-15.0: sm[(sm.variant == v) & (sm.cond == cond) & (sm.str_db == st)]
+
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 6.6), facecolor=SURFACE, gridspec_kw=dict(wspace=0.30))
+    _style_axes(axL)
+    for v in ("C", "E", "H"):
+        c = to[to.variant == v].sort_values("p")
+        if c.empty:
+            continue
+        st = STYLE[v]
+        axL.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], zorder=st["z"], label=st["label"], marker=".", ms=5)
+        op = c[c.p == 1.0]
+        axL.plot(op.ta_db_mean, op.sp_mean, marker=st["marker"], ms=10, color=st["color"], mec=SURFACE, mew=2, zorder=st["z"] + 1)
+        axL.annotate(st["short"], (c.ta_db_mean.iloc[-1], c.sp_mean.iloc[-1]), xytext=(6, 0), textcoords="offset points",
+                     va="center", fontsize=10, color=INK)
+    for v, mk, lbl, off in (("B", "D", "MCTR (B)", (8, -16)), ("I", "*", "Ideal mask", (6, 6))):
+        d = cell(v)
+        if not d.empty:
+            axL.plot(d.ta_db_mean, d.speech_preserved_mean, marker=mk, ms=12 if v == "I" else 8, color=STYLE[v]["color"],
+                     mec=SURFACE, mew=1.5, zorder=7, ls="none", label=STYLE[v]["label"] if v == "I" else None)
+            axL.annotate(lbl, (float(d.ta_db_mean.iloc[0]), float(d.speech_preserved_mean.iloc[0])), xytext=off,
+                         textcoords="offset points", fontsize=10, color=INK)
+    axL.plot(0, 1.0, marker="o", ms=8, color=MUTED, mec=SURFACE, mew=2, zorder=7)
+    axL.annotate("No processing", (0, 1.0), xytext=(8, 4), textcoords="offset points", fontsize=10, color=INK_2)
+    c_op = to[(to.variant == "C") & (to.p == 1.0)]
+    if not c_op.empty and "H" in set(to.variant):
+        y_ref = float(c_op.sp_mean.iloc[0])
+        xc, xh = _x_at(to[to.variant == "C"], y_ref), _x_at(to[to.variant == "H"], y_ref)
+        if np.isfinite(xc) and np.isfinite(xh):
+            axL.axhline(y_ref, color=MUTED, lw=0.8, ls=(0, (2, 3)), zorder=1)
+            axL.annotate("", xy=(xh, y_ref), xytext=(xc, y_ref),
+                         arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.8, mutation_scale=16), zorder=9)
+            axL.text((xc + xh) / 2, y_ref + 0.002, f"{xh - xc:+.1f} dB transient attenuation\nat equal speech quality (H vs C)",
+                     ha="center", va="bottom", fontsize=10.5, color=INK, fontweight="bold", zorder=9)
+    axL.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
+    axL.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
+    axL.set_title("A   Transient removed vs speech kept", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=40)
+    axL.text(0, 1.02, "Unseen transient types, STR −15 dB. Big marker = model as trained;\nline = same model made gentler / harsher.",
+             transform=axL.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+
+    _style_axes(axR)
+    strs = sorted(set(sm.str_db), reverse=True)
+    lo, hi = min(CFG.data.train_str_db), max(CFG.data.train_str_db)
+    axR.axvspan(hi + 0.5, lo - 0.5, color=GRID, alpha=0.6, zorder=0, lw=0)
+    ends = []
+    for v in ("A", "B", "C", "E", "I", "H"):
+        d = sm[(sm.variant == v) & (sm.cond == "unseen")].sort_values("str_db", ascending=False)
+        if d.empty:
+            continue
+        st = STYLE[v]
+        axR.errorbar(d.str_db, d.stoi_mean, yerr=d.stoi_ci, color=st["color"], lw=st["lw"], ls=st["ls"],
+                     marker=st["marker"] or None, ms=7, mec=SURFACE, capsize=2, zorder=st["z"], label=st["label"])
+        ends.append([float(d.stoi_mean.iloc[-1]), st["short"], float(d.str_db.iloc[-1])])
+    ylo, yhi = axR.get_ylim()
+    gap = 0.045 * (yhi - ylo)                                   # push end labels apart so they never overlap
+    ends.sort()
+    for i in range(1, len(ends)):
+        ends[i][0] = max(ends[i][0], ends[i - 1][0] + gap)
+    for y, lab, x in ends:
+        axR.annotate(lab, (x, y), xytext=(10, 0), textcoords="offset points", va="center", fontsize=9.5, color=INK)
+    axR.set_xlim(max(strs) + 1, min(strs) - 9)
+    axR.set_xticks(strs)
+    axR.set_xlabel("Speech-to-transient ratio (dB)   →  louder transient", fontsize=11, color=INK)
+    axR.set_ylabel("Predicted intelligibility (STOI)", fontsize=11, color=INK)
+    axR.set_title("B   Intelligibility as the transient gets louder", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=40)
+    axR.text(0, 1.02, "Unseen transient types and talkers. Shaded = loudness range used\nin training. Mean ± 95% CI.",
+             transform=axR.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+    h, l = axR.get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=3, frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.06), labelcolor=INK)
+    fig.suptitle("Experimental results — first pass (1 training seed, 100 test sentences per cell, CPU budget)",
+                 x=0.5, y=1.06, fontsize=12.5, color=INK, fontweight="bold")
+    if smoke:
+        fig.text(0.5, 0.5, "SYNTHETIC SMOKE TEST — NOT RESULTS", ha="center", va="center", rotation=20,
+                 fontsize=34, color="#b8322f", alpha=0.25, fontweight="bold")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    if not smoke:
+        fig.savefig(run_dir / out_path.name, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return out_path
 

@@ -155,3 +155,52 @@ def loss_fn(params: dict, u: jnp.ndarray, irm: jnp.ndarray, mode: str) -> jnp.nd
 
 def count_params(params) -> int:
     return sum(x.size for x in jax.tree_util.tree_leaves(params))
+
+
+###########################################################
+#        BELIEF-NETWORK VARIANTS (F, G, H) — stage 4      #
+###########################################################
+
+def init_dbn_mask_net(key, n_lsn: int, c_lsn: int, use_fb: bool, use_beliefs: bool,
+                      sizes: tuple = CFG.mask.lstm_sizes, readout_dim: int = None) -> dict:
+    """Per-LSN readouts (c_lsn -> readout_dim), stream selector, LayerNorm, then the same 2-layer LSTM + Dense."""
+    r = readout_dim or CFG.dbn.readout_dim_per_lsn
+    d_in = CFG.audio.n_bands * use_fb + n_lsn * r + 3 * n_lsn * use_beliefs
+    k1, k2, k3 = jax.random.split(key, 3)
+    lim = jnp.sqrt(6.0 / (c_lsn + r))
+    p = init_mask_net(k1, d_in, sizes)
+    p["readout"] = {"W": jax.random.uniform(k2, (n_lsn, c_lsn, r), minval=-lim, maxval=lim), "b": jnp.zeros((n_lsn, r))}
+    p["selector"] = {"W": 0.01 * jax.random.normal(k3, (sizes[1], n_lsn)), "b": jnp.zeros(n_lsn)}
+    p["ln"] = {"g": jnp.ones(d_in), "b": jnp.zeros(d_in)}
+    return p
+
+
+def _layer_norm(p, x):
+    mu = x.mean(-1, keepdims=True); var = x.var(-1, keepdims=True)
+    return p["g"] * (x - mu) / jnp.sqrt(var + 1e-5) + p["b"]
+
+
+def run_dbn_stream(params: dict, fb, Z, bel, use_selection: bool = CFG.mask.use_stream_selection) -> tuple:
+    """fb (B,T,64) or None; Z (B,T,L,C) per-LSN activity; bel (B,T,L,3) or None.
+    Returns masks (B,T,64) and stream-selection weights (B,T,L) (uniform if selection is off). Causal:
+    the selection weights at frame t come from the LSTM state at t-1."""
+    zr = jax.nn.relu(jnp.einsum("btlc,lcr->btlr", Z, params["readout"]["W"]) + params["readout"]["b"])
+    B, T, L, _ = zr.shape
+
+    def frame(carry, xs):
+        h1, c1, h2, c2 = carry
+        fb_t, z_t, b_t = xs
+        if use_selection:
+            w = jax.nn.softmax(h2 @ params["selector"]["W"] + params["selector"]["b"], axis=-1)
+        else:
+            w = jnp.full((B, L), 1.0 / L)
+        parts = ([fb_t] if fb_t is not None else []) + [(z_t * (L * w)[..., None]).reshape(B, -1)]
+        if b_t is not None:
+            parts.append(b_t.reshape(B, -1))
+        u = _layer_norm(params["ln"], jnp.concatenate(parts, axis=-1))
+        (h1, c1, h2, c2), m = step(params, (h1, c1, h2, c2), u)
+        return (h1, c1, h2, c2), (m, w)
+
+    sw = lambda a: None if a is None else jnp.swapaxes(a, 0, 1)
+    _, (m, w) = jax.lax.scan(frame, zero_carry(params, (B,)), (sw(fb), sw(zr), sw(bel)))
+    return jnp.swapaxes(m, 0, 1), jnp.swapaxes(w, 0, 1)

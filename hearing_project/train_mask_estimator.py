@@ -20,7 +20,8 @@ USAGE
     python train_mask_estimator.py D            # same network, continuous memory
     python train_mask_estimator.py C --smoke    # 60-step run on synthetic data, just to test the code
 
-IMPLEMENTATION STATUS: IMPLEMENTED for variants C and D. Stage-5 fine-tuning (`finetune`) is still
+IMPLEMENTATION STATUS: IMPLEMENTED for every learned variant (C, D, E, F, G, H). For F/G/H the belief
+network and memories are frozen and passed in as `aux`; only readouts, selector, LayerNorm and LSTMs learn. Stage-5 fine-tuning (`finetune`) is still
 pseudocode: unfreeze DBN + attention alpha/beta/temperature (lr 1e-5 DBN, 1e-4 rest), keep the CRBM
 sparsity penalty as a regulariser, early-stop on validation ESTOI.
 """
@@ -77,8 +78,8 @@ def get_stats(corpus: dm.Corpus, run_dir: Path) -> dict:
 
 
 def train(variant: str, corpus: dm.Corpus, n_steps: int = 2000, batch_size: int = 16, seed: int = 0,
-          val_every: int = 100, tag: str = None) -> Path:
-    assert variant in mv.NEURAL, f"variant {variant} is not trainable in stage 1"
+          val_every: int = 100, tag: str = None, dbn_dir: Path = None) -> Path:
+    assert variant in mv.NEURAL, f"variant {variant} is not a learned model"
     mode = mv.MODES[variant]
     run_dir = run_dir_for(corpus, tag)
     out_dir = run_dir / variant / f"seed{seed}"
@@ -90,23 +91,23 @@ def train(variant: str, corpus: dm.Corpus, n_steps: int = 2000, batch_size: int 
     vx, vs, vv = (jnp.asarray(np.stack([m[k] for m in val])) for k in ("x", "s", "v"))
     val_irm = fe.ideal_ratio_mask(vs, vv)
 
-    params = ml.init_mask_net(jax.random.PRNGKey(seed), CFG.audio.n_bands)
+    params = mv.init_params(variant, jax.random.PRNGKey(seed), dbn_dir)
+    aux = mv.build_aux(variant, stats, dbn_dir)
     lr_fn = make_schedule(CFG.mask.lr, n_steps)
     opt = adam_init(params)
+    mse = lambda params, aux, x, irm: jnp.mean((mv.predict(variant, params, aux, x) - irm) ** 2)
 
     @jax.jit
-    def train_step(params, opt, x, s, v):
-        u, irm = mv.features(x, stats), fe.ideal_ratio_mask(s, v)
-        loss, grads = jax.value_and_grad(ml.loss_fn)(params, u, irm, mode)
+    def train_step(params, opt, aux, x, s, v):
+        loss, grads = jax.value_and_grad(mse)(params, aux, x, fe.ideal_ratio_mask(s, v))
         grads, gnorm = clip_by_global_norm(grads, CFG.mask.grad_clip)
         params, opt = adam_update(params, grads, opt, lr_fn)
         return params, opt, loss, gnorm
 
-    @jax.jit
+    val_chunk = jax.jit(mse)
+
     def val_loss(params):
-        losses = [ml.loss_fn(params, mv.features(vx[i: i + 50], stats), val_irm[i: i + 50], mode)
-                  for i in range(0, vx.shape[0], 50)]
-        return jnp.mean(jnp.stack(losses))
+        return np.mean([float(val_chunk(params, aux, vx[i: i + 25], val_irm[i: i + 25])) for i in range(0, vx.shape[0], 25)])
 
     batches = dm.batch_iterator(corpus, "train", batch_size=batch_size, seed=seed)
     print(f"[{variant}] mode={mode} params={n_params(params):,} steps={n_steps} batch={batch_size} "
@@ -114,7 +115,7 @@ def train(variant: str, corpus: dm.Corpus, n_steps: int = 2000, batch_size: int 
     best, log, t0, run_loss = np.inf, [], time.time(), []
     for step in range(1, n_steps + 1):
         b = next(batches)
-        params, opt, loss, gnorm = train_step(params, opt, jnp.asarray(b["x"]), jnp.asarray(b["s"]), jnp.asarray(b["v"]))
+        params, opt, loss, gnorm = train_step(params, opt, aux, jnp.asarray(b["x"]), jnp.asarray(b["s"]), jnp.asarray(b["v"]))
         run_loss.append(float(loss))
         if step % val_every == 0 or step == n_steps:
             vl = float(val_loss(params))

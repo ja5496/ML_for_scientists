@@ -23,65 +23,89 @@ three belief numbers.
 
 Everything here only uses the present and past, so it adds no delay.
 
-PSEUDOCODE FOR THE IMPLEMENTING AGENT
--------------------------------------
-Inputs per LSN: F (U, T_native) nonnegative activity; memories W_speech (U,Ks), W_trans (U,Kt), W_free (U,Kf);
-hop_ms = 2.5 * rate of that LSN.
-
-W = concat([W_speech, W_trans, W_free], axis=1)           # (U, K), K = Ks + Kt + Kf; FIXED (not learned in stage 4)
-
-project_frame(f (U,), W) -> h (K,) >= 0:                   # online version of Eq. 8 (one column at a time)
-    h = relu(W.T f) / (diag(W.T W))                         # warm start
-    repeat CFG.attn.nnls_iters times:                       # projected gradient, step 1/L with L = ||W.T W||_2
-        h = relu(h - (W.T (W h - f)) / L)
-    return h
-    -> vectorise over frames with vmap (no recurrence needed; each frame independent)
-
-beliefs[t] = [sum(h[t, speech]), sum(h[t, trans]), ||f_t - W h_t|| / (||f_t|| + eps)]     # (3,)
-H_att[t]   = beliefs[t, 0]                                                                    # Bellur's H_att
-
-running coherence (online version of Eq. 9) via jax.lax.scan over t:
-    lam = exp(-hop_ms / CFG.attn.coherence_tau_ms)
-    state: mu_F (U,), mu_H, var_F (U,), var_H, cov (U,)
-    mu_F  = lam mu_F + (1-lam) F[:, t];   mu_H = lam mu_H + (1-lam) H_att[t]
-    dF = F[:, t] - mu_F;  dH = H_att[t] - mu_H
-    cov   = lam cov   + (1-lam) dF * dH
-    var_F = lam var_F + (1-lam) dF**2;  var_H = lam var_H + (1-lam) dH**2
-    c[:, t] = cov / sqrt(var_F * var_H + eps)               # Pearson-like, in [-1, 1]
-    (initial state: zeros; the first ~tau ms are a warm-up — fine for 2-s training crops,
-     and in deployment the state just keeps running)
-
-gate (soft version of Eq. 10):
-    g = sigmoid((c - beta) / CFG.attn.gate_temperature)     # beta init = CFG.attn.beta_threshold
-mix (Eq. 11):
-    F_hat = g * F
-    F_att = alpha * F + (1 - alpha) * F_hat                  # alpha init = CFG.attn.alpha_mix
-    F_rej = (1 - g) * F                                      # NEW: the evidence for "not speech"
-return F_att, F_rej, beliefs.T (3, T_native)
-
-Learnable bits (stage 5 only, if CFG.attn.learn_alpha_beta): alpha (sigmoid-parameterised), beta, and
-log-temperature per LSN. W stays fixed so the memories keep their meaning.
-
-Sanity tests:
-    - on clean speech, mean g > 0.7 at most LSNs; on an isolated transient, beliefs[1] >> beliefs[0]
-    - perturbing F[:, t0:] leaves outputs[:, :t0] unchanged (causality)
-    - alpha = 1 -> F_att == F exactly (attention switched off)
+IMPLEMENTATION NOTES (status: IMPLEMENTED, tested in test_attention.py)
+-----------------------------------------------------------------------
+Shapes carry a batch dim: F (B, U, T_native). Memories W = [W_speech | W_trans | W_free] (U, K), fixed.
+1. beliefs: per-frame non-negative projection h = argmin_{h>=0} ||f - W h|| (projected gradient, 5 steps,
+   step 1/L with L = largest eigenvalue of W^T W). beliefs = [sum h_speech, sum h_trans, relative residual].
+   Each frame is independent -> causal by construction.
+2. running coherence (online Eq. 9): exponentially-weighted Pearson correlation between each unit and the
+   speech belief over the last ~CFG.attn.coherence_tau_ms, via jax.lax.scan (past frames only).
+3. soft gate (Eq. 10): g = sigmoid((c - beta) / temperature); mix (Eq. 11): F_att = alpha F + (1 - alpha) g F.
+4. F_rej = (1 - g) F is KEPT (Bellur discarded it) — it tells the mask estimator where the transient is.
+alpha, beta, temperature are plain arguments (fixed in stage 4; learnable in stage 5).
 """
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from config import CFG
 
-
-def project_frame(f: jnp.ndarray, W: jnp.ndarray, n_iter: int = CFG.attn.nnls_iters) -> jnp.ndarray:
-    raise NotImplementedError
+A = CFG.attn
 
 
-def running_coherence(F: jnp.ndarray, H_att: jnp.ndarray, hop_ms: float, tau_ms: float = CFG.attn.coherence_tau_ms) -> jnp.ndarray:
-    raise NotImplementedError
+def memory_matrix(memory: dict) -> tuple:
+    """Stack a sub-network's memories -> (W (U, K), n_speech, n_trans)."""
+    parts = [memory["W_speech"], memory["W_trans"]] + ([memory["W_free"]] if memory.get("W_free") is not None else [])
+    W = jnp.asarray(np.concatenate(parts, axis=1))
+    return W, memory["W_speech"].shape[1], memory["W_trans"].shape[1]
 
 
-def apply(F: jnp.ndarray, memory: dict, hop_ms: float, attn_params: dict = None) -> tuple:
-    """Return (F_att, F_rej, beliefs) for one LSN. All causal."""
-    raise NotImplementedError
+def project(F: jnp.ndarray, W: jnp.ndarray, n_iter: int = A.nnls_iters) -> jnp.ndarray:
+    """Non-negative least squares per frame. F (B, U, T) -> H (B, K, T)."""
+    WtW = W.T @ W
+    L = jnp.linalg.eigvalsh(WtW)[-1] + 1e-6
+    WtF = jnp.einsum("uk,but->bkt", W, F)
+    H = jax.nn.relu(WtF) / (jnp.diag(WtW)[None, :, None] + 1e-6)
+    for _ in range(n_iter):
+        H = jax.nn.relu(H - (jnp.einsum("kj,bjt->bkt", WtW, H) - WtF) / L)
+    return H
+
+
+def beliefs(F: jnp.ndarray, mem: tuple) -> jnp.ndarray:
+    """F (B, U, T) -> (B, 3, T): [speech belief, transient belief, relative residual]."""
+    W, ns, nt = mem
+    H = project(F, W)
+    resid = jnp.linalg.norm(F - jnp.einsum("uk,bkt->but", W, H), axis=1) / (jnp.linalg.norm(F, axis=1) + 1e-6)
+    return jnp.stack([H[:, :ns].sum(1), H[:, ns: ns + nt].sum(1), resid], axis=1)
+
+
+def running_coherence(F: jnp.ndarray, H_att: jnp.ndarray, hop_ms: float, tau_ms: float = A.coherence_tau_ms) -> jnp.ndarray:
+    """Causal exponentially-weighted correlation of each unit with the speech belief. -> (B, U, T) in [-1, 1]."""
+    lam = float(np.exp(-hop_ms / tau_ms))
+    B, U, T = F.shape
+
+    def step(state, xs):
+        mu_f, mu_h, var_f, var_h, cov = state
+        f, h = xs                                                  # (B, U), (B,)
+        mu_f = lam * mu_f + (1 - lam) * f
+        mu_h = lam * mu_h + (1 - lam) * h
+        df, dh = f - mu_f, (h - mu_h)[:, None]
+        cov = lam * cov + (1 - lam) * df * dh
+        var_f = lam * var_f + (1 - lam) * df ** 2
+        var_h = lam * var_h + (1 - lam) * dh[:, 0] ** 2
+        c = cov / jnp.sqrt(var_f * var_h[:, None] + 1e-8)
+        return (mu_f, mu_h, var_f, var_h, cov), c
+
+    z = jnp.zeros((B, U))
+    init = (z, jnp.zeros(B), z, jnp.zeros(B), z)
+    _, c = jax.lax.scan(step, init, (jnp.moveaxis(F, -1, 0), jnp.moveaxis(H_att, -1, 0)))
+    return jnp.moveaxis(c, 0, -1)
+
+
+def apply(F: jnp.ndarray, mem: tuple, hop_ms: float, alpha: float = A.alpha_mix, beta: float = A.beta_threshold,
+          temperature: float = A.gate_temperature) -> tuple:
+    """One LSN: F (B, U, T) -> (F_att, F_rej, beliefs (B, 3, T)). All causal."""
+    bel = beliefs(F, mem)
+    c = running_coherence(F, bel[:, 0], hop_ms)
+    g = jax.nn.sigmoid((c - beta) / temperature)
+    F_att = alpha * F + (1 - alpha) * g * F
+    F_rej = (1 - g) * F
+    return F_att, F_rej, bel
+
+
+def make_attn(memories: dict, **kw):
+    """Callable for dbn_distributed.forward(attn=...)."""
+    mats = {lsn: memory_matrix(m) for lsn, m in memories.items()}
+    return lambda F, lsn, hop_ms: apply(F, mats[lsn], hop_ms, **kw)

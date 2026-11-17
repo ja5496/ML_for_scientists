@@ -21,12 +21,14 @@ Ablations (each answers one question):
   7. CRBM vs sparse autoencoder DBN backend
   8. Frozen vs fine-tuned belief network
 
-USAGE (stage 1 = data + baseline reproduction, IMPLEMENTED)
+USAGE (IMPLEMENTED: stage 1, stage 3, stage 4 incl. scoring, paired statistics and the money plot)
 ------------------------------------------------------------
     python run_experiments.py stage1 --smoke          # 2-minute end-to-end check on synthetic data
     python run_experiments.py stage1                  # real data: trains C and D, scores A B C D I
     python run_experiments.py stage1 --n 300          # all 300 test sentences per cell (slower)
-Outputs in runs/stage1/: results_per_utterance.csv, summary.csv, stage1_results.png, go_no_go.txt
+    python run_experiments.py stage3                  # memories + go/no-go (after dbn_pretrain.py)
+    python run_experiments.py stage4                  # trains E F G H, scores all nine, money plot
+Outputs in runs/stage1/ (shared experiment folder: recipes, feature stats, all trained models, tables, figures)
 
 PSEUDOCODE FOR LATER STAGES
 ---------------------------
@@ -143,7 +145,8 @@ def go_no_go(summary) -> str:
     return "\n".join(lines) + "\n"
 
 
-def plot_stage1(summary, out_path: Path, synthetic: bool = False) -> Path:
+def plot_stage1(summary, out_path: Path, synthetic: bool = False, variants=("A", "B", "C", "D", "I"),
+                title: str = "Stage 1 — reproducing the Keshavarzi et al. baseline (mean ± 95% CI over test sentences)") -> Path:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -152,6 +155,8 @@ def plot_stage1(summary, out_path: Path, synthetic: bool = False) -> Path:
     style["D"] = dict(label="Same RNN, continuous memory (D)", short="RNN-stream (D)", color="#6250d6",
                       lw=2.0, marker="o", ls="-", z=5)
     style["C"] = dict(STYLE["C"], label="Keshavarzi et al. 2021 RNN, reproduced (C)")
+    style["G"] = dict(label="Filterbank + belief network, no attention (G)", short="G", color="#e87ba4", lw=1.6, marker="v", ls="--", z=4)
+    style["F"] = dict(label="Belief network + attention, no filterbank (F)", short="F", color="#008300", lw=1.6, marker="P", ls="--", z=4)
     conds = [c for c in ("seen", "unseen", "grandma") if c in set(summary["cond"])]
     titles = {"seen": "Transient types seen in training", "unseen": "Unseen transient types",
               "grandma": "Crumpling & crinkling (never trained on)"}
@@ -162,7 +167,7 @@ def plot_stage1(summary, out_path: Path, synthetic: bool = False) -> Path:
     for j, cond in enumerate(conds):
         for i, (m, ylabel) in enumerate(metrics):
             ax = axes[i, j]; _style_axes(ax)
-            for v in ("A", "B", "C", "D", "I"):
+            for v in variants:
                 d = summary[(summary.variant == v) & (summary.cond == cond)].sort_values("str_db", ascending=False)
                 if d.empty:
                     continue
@@ -178,7 +183,6 @@ def plot_stage1(summary, out_path: Path, synthetic: bool = False) -> Path:
                 ax.set_xlabel("Speech-to-transient ratio (dB)  →  louder transient", fontsize=10, color=INK)
     h, l = axes[0, 0].get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=3, frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.04))
-    title = "Stage 1 — reproducing the Keshavarzi et al. baseline (mean ± 95% CI over test sentences)"
     fig.suptitle(title, x=0.01, ha="left", y=1.0, fontsize=13, color=INK, fontweight="bold")
     if synthetic:
         fig.text(0.5, 0.5, "SYNTHETIC SMOKE TEST — NOT RESULTS", ha="center", va="center", rotation=25,
@@ -189,13 +193,140 @@ def plot_stage1(summary, out_path: Path, synthetic: bool = False) -> Path:
     return out_path
 
 
+###########################################################
+#                 STAGE 3: MEMORIES (go/no-go)            #
+###########################################################
+
+def stage3(smoke: bool = False):
+    import json, pickle
+    import local_memory as lm
+    from dbn_pretrain import DBN_DIR, load_dbn
+    from config import DATA
+    dbn_dir = CFG.out_dir / "smoke" / "dbn" if smoke else DBN_DIR
+    cache = DATA / "synthetic_cache" if smoke else CFG.data.cache_dir
+    params, stats = load_dbn(dbn_dir)
+    assert smoke or len(params) == 15, f"only {len(params)} of 15 LSNs are pretrained — finish dbn_pretrain.py first"
+    DBN_DIR = dbn_dir
+    memories = lm.build_memories(params, stats, cache, n_speech_crops=16 if smoke else 200)
+    pickle.dump(memories, open(DBN_DIR / "memories.pkl", "wb"))
+    rep = lm.separability_report(params, stats, memories, cache)
+    (DBN_DIR / "memory_separability.json").write_text(json.dumps(rep, indent=1))
+    lines = ["Stage-3 memory check (held-out speech vs held-out transients; speech share of the belief):"]
+    for k, v in rep.items():
+        lines.append(f"  {k}: on speech {v['speech_share_on_speech']:.2f}  on transients "
+                     f"{v['speech_share_on_transient']:.2f}  gap {v['gap']:+.2f}")
+    good = sum(v["gap"] > 0.2 for v in rep.values())
+    lines.append(f"  {good}/{len(rep)} sub-networks separate speech from transients (gap > 0.2) -> "
+                 f"{'GO' if good >= 3 else 'NO-GO: attention has little to work with'}")
+    text = "\n".join(lines) + "\n"
+    (DBN_DIR / "stage3_go_no_go.txt").write_text(text)
+    print(text)
+    return rep
+
+
+###########################################################
+#          STAGE 4: BELIEF-NETWORK MODELS + SCORING       #
+###########################################################
+
+ALL_VARIANTS = ("A", "B", "C", "D", "E", "F", "G", "H", "I")
+
+
+def paired_comparison(df, a: str = "H", against=("C", "D", "E"), conds=("seen", "unseen", "grandma")) -> str:
+    """Per-mixture paired differences (same test audio for every model) with 95% CI and Wilcoxon p."""
+    from scipy.stats import wilcoxon
+    lines = [f"Paired comparison of {a} vs baselines (difference = {a} minus baseline; same test mixtures):"]
+    for b in against:
+        for cond in conds:
+            x = df[(df.variant == a) & (df.cond == cond)].sort_values(["str_db", "speech_idx"])
+            y = df[(df.variant == b) & (df.cond == cond)].sort_values(["str_db", "speech_idx"])
+            if x.empty or y.empty:
+                continue
+            parts = []
+            for m in ("stoi", "ta_db", "speech_preserved"):
+                d = x[m].to_numpy() - y[m].to_numpy()
+                ci = 1.96 * d.std(ddof=1) / np.sqrt(len(d))
+                p = wilcoxon(d).pvalue if np.any(d != 0) else 1.0
+                parts.append(f"{m} {d.mean():+.4f} ± {ci:.4f} (p={p:.1e})")
+            lines.append(f"  {a}-{b} [{cond:7s}] " + "   ".join(parts))
+    return "\n".join(lines) + "\n"
+
+
+def tradeoff(corpus, rows, models, variants=("C", "D", "E", "H"), exponents=(0.5, 0.75, 1.0, 1.5, 2.0, 3.0),
+             cond="unseen", str_db=-15.0, workers=4):
+    """Money-plot left panel: make each model more/less aggressive (mask ** p) -> attenuation vs speech kept."""
+    import jax.numpy as jnp
+    import frontend_gammatone as fe
+    import pandas as pd
+    rows = [r for r in rows if r["cond"] == cond and r["str_db"] == str_db]
+    mixes = [dm.realise(corpus, r) for r in rows]
+    out = []
+    for v in variants:
+        masks = [o["mask"] for o in mv.process_batch(v, mixes, models.get(v))]
+        for p in exponents:
+            items = []
+            for m, M in zip(mixes, masks):
+                Mp = jnp.asarray(M) ** p
+                items.append(dict(s=m["s"], v=m["v"], onset=m["onset"],
+                                  s_hat=np.asarray(fe.enhance_with_mask(jnp.asarray(m["s"]), Mp)),
+                                  v_hat=np.asarray(fe.enhance_with_mask(jnp.asarray(m["v"]), Mp))))
+            sc = em.score_many_tradeoff(items, workers)
+            out.append(dict(variant=v, p=p, ta_db_mean=np.mean([r["ta_db"] for r in sc]),
+                            sp_mean=np.mean([r["speech_preserved"] for r in sc]), n=len(sc)))
+            print(f"  tradeoff {v} p={p}: TA {out[-1]['ta_db_mean']:.1f} dB, speech preserved {out[-1]['sp_mean']:.3f}", flush=True)
+    return pd.DataFrame(out)
+
+
+def stage4(n_per_cell: int = 100, steps: int = 2000, batch: int = 16, seed: int = 0, retrain: bool = False,
+           variants_to_train=("H", "G", "F", "E"), smoke: bool = False):
+    import pandas as pd
+    if smoke:
+        import synthetic_audio
+        corpus = dm.load_corpus(synthetic_audio.build())
+        mv.set_dbn_dir(CFG.out_dir / "smoke" / "dbn")
+        steps, batch, n_per_cell = 20, 4, 4
+    else:
+        corpus = dm.load_corpus()
+    run_dir = tm.run_dir_for(corpus)
+    recipes = tm.get_recipes(corpus, run_dir)
+    models = {}
+    for v in ("C", "D") + tuple(variants_to_train):
+        ckpt = run_dir / v / f"seed{seed}" / "best.pkl"
+        if retrain and v in variants_to_train or not ckpt.exists():
+            tm.train(v, corpus, n_steps=steps, batch_size=batch, seed=seed, val_every=10 if smoke else 100)
+        models[v] = mv.Trained.load(ckpt)
+    rows = select_test_rows(recipes, n_per_cell)
+    variants = [v for v in ALL_VARIANTS if v in models or v in ("A", "B", "I")]
+    results = evaluate(corpus, run_dir, rows, models, variants=variants)
+    df = pd.DataFrame(results)
+    df.to_csv(run_dir / "stage4_results_per_utterance.csv", index=False)
+    summary = em.aggregate(results)
+    summary.to_csv(run_dir / "stage4_summary.csv", index=False)
+    verdict = go_no_go(summary) + "\n" + paired_comparison(df)
+    (run_dir / "stage4_verdict.txt").write_text(verdict)
+    print(verdict)
+    plot_stage1(summary, run_dir / "stage4_results.png", variants=("A", "C", "D", "E", "H", "I"),
+                title="Stage 4 — belief network + attention (H) vs baselines (mean ± 95% CI over test sentences)")
+    plot_stage1(summary, run_dir / "stage4_ablations.png", variants=("C", "F", "G", "H", "I"),
+                title="Stage 4 ablations — what each part of the proposed model contributes")
+    to = tradeoff(corpus, rows, models)
+    to.to_csv(run_dir / "tradeoff_unseen_str-15.csv", index=False)
+    import money_plot
+    print("money plot:", money_plot.make_money_plot(from_results=True, run_dir=run_dir))
+    return summary
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["stage1"])
+    ap.add_argument("stage", choices=["stage1", "stage3", "stage4"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--n", type=int, default=100, help="test sentences per (condition, STR) cell")
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--retrain", action="store_true")
     a = ap.parse_args()
-    stage1(smoke=a.smoke, n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain)
+    if a.stage == "stage1":
+        stage1(smoke=a.smoke, n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain)
+    elif a.stage == "stage3":
+        stage3(smoke=a.smoke)
+    else:
+        stage4(n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain or a.smoke, smoke=a.smoke)

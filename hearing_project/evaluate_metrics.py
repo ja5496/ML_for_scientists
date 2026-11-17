@@ -23,7 +23,7 @@ IMPLEMENTED: STOI, ESTOI, SI-SDR, transient attenuation, peak-level reduction, s
   attenuation, parallel scoring, aggregation with 95% confidence intervals.
 NOT YET (optional, later): PESQ (the `pesq` package does not build on this Python 3.13 sandbox; it is used
   automatically if installed), HASPI/HASQI via pyclarity for simulated hearing loss using the 10 audiograms
-  in Keshavarzi Table 1, and the mask-exponent trade-off sweep for the money plot (tradeoff_curve).
+  in Keshavarzi Table 1. (The mask-exponent trade-off sweep lives in run_experiments.tradeoff.)
 
 This module deliberately imports only numpy/pystoi (no JAX) so it can run in worker processes.
 """
@@ -94,6 +94,17 @@ def score_one(item: dict) -> dict:
     return out
 
 
+def score_tradeoff(item: dict) -> dict:
+    """Only what the trade-off sweep needs: transient attenuation and speech preserved."""
+    return dict(ta_db=transient_attenuation_db(item["v"], item["v_hat"], item["onset"]),
+                speech_preserved=_stoi(item["s"], item["s_hat"], FS))
+
+
+def score_many_tradeoff(items: list, workers: int = 4) -> list:
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as ex:
+        return list(ex.map(score_tradeoff, items, chunksize=8))
+
+
 def score_many(items: list, workers: int = 4) -> list:
     if workers <= 1:
         return [score_one(i) for i in items]
@@ -120,6 +131,3 @@ def aggregate(rows: list, by=("variant", "cond", "str_db")):
     return out.reset_index()
 
 
-def tradeoff_curve(*args, **kwargs):
-    """Money-plot left panel: sweep mask exponent p (M ** p) per model -> (transient attenuation, speech preserved)."""
-    raise NotImplementedError("planned for the money plot; not needed for the stage-1 baseline")

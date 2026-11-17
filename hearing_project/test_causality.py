@@ -73,3 +73,33 @@ def test_output_audio_latency_is_one_frame():
     y2 = np.asarray(fe.enhance_with_mask(jnp.asarray(_perturb_after(x, t0)), M))
     delay = CFG.audio.frame_len - 1
     assert np.allclose(y1[: t0 - delay - 1], y2[: t0 - delay - 1], atol=1e-6)
+
+
+def _random_aux(key=0):
+    import dbn_distributed as dd
+    params = dd.init_dbn(jax.random.PRNGKey(key))
+    U = CFG.dbn.units_per_lsn
+    W = {f"{g}{z}": jnp.abs(jax.random.normal(jax.random.PRNGKey(g * 10 + z), (U, mv.K_SPEECH + mv.K_TRANS + CFG.attn.n_free_bases)))
+         for (g, z) in params}
+    W = {k: w / jnp.linalg.norm(w, axis=0, keepdims=True) for k, w in W.items()}
+    zeros, ones = jnp.zeros(CFG.audio.n_bands), jnp.ones(CFG.audio.n_bands)
+    return {"fb_stats": {"mean": zeros, "std": ones}, "dbn": {f"{g}{z}": p for (g, z), p in params.items()},
+            "dbn_stats": {"mean": zeros - 10.0, "std": ones * 3.0}, "W": W}
+
+
+def test_belief_network_variants_are_causal():
+    """F, G, H end to end (front end -> 15-LSN tree -> attention -> holds -> LSTM): no future leakage."""
+    aux = _random_aux()
+    x = (0.05 * rng.standard_normal((1, 12_000))).astype(np.float32)
+    t0 = 6_000
+    x2 = _perturb_after(x, t0)
+    k = last_safe_frame(t0)
+    for v in ("F", "G", "H"):
+        cfg = mv.DBN_VARIANTS[v]
+        c = CFG.dbn.units_per_lsn * (2 if cfg["attn"] else 1)
+        params = ml.init_dbn_mask_net(jax.random.PRNGKey(5), 15, c, cfg["fb"], cfg["attn"])
+        a = {kk: vv for kk, vv in aux.items() if v != "G" or kk != "W"}
+        m1 = np.asarray(mv.predict(v, params, a, jnp.asarray(x)))[0]
+        m2 = np.asarray(mv.predict(v, params, a, jnp.asarray(x2)))[0]
+        assert np.allclose(m1[: k + 1], m2[: k + 1], atol=1e-5), v
+        assert not np.allclose(m1[k + 1:], m2[k + 1:]), v
