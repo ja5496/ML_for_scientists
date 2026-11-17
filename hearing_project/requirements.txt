@@ -1,0 +1,12 @@
+# Core (pin exact versions once the environment is set up)
+jax
+numpy
+matplotlib
+soundfile
+soxr            # resampling 48k -> 16k
+pandas
+pytest
+# Metrics
+pystoi
+pesq
+pyclarity       # HASPI / HASQI / hearing-loss simulation (Clarity Challenge toolkit)
