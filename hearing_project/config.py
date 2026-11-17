@@ -18,6 +18,9 @@ PSEUDOCODE / NOTES FOR THE IMPLEMENTING AGENT
 from dataclasses import dataclass, field
 from pathlib import Path
 
+PROJECT_DIR = Path(__file__).resolve().parent
+DATA = PROJECT_DIR / "data"
+
 
 ###########################################################
 #                     AUDIO / FRAMING                     #
@@ -98,13 +101,13 @@ class MaskNetCfg:
 
 @dataclass(frozen=True)
 class DataCfg:
-    root: Path = Path("data")
-    vctk_dir: Path = Path("data/vctk")
-    fsd50k_dir: Path = Path("data/fsd50k")
-    esc50_dir: Path = Path("data/esc50")
-    librispeech_dir: Path = Path("data/librispeech")
-    musan_dir: Path = Path("data/musan")
-    demand_dir: Path = Path("data/demand")
+    root: Path = DATA
+    vctk_dir: Path = DATA / "vctk"
+    fsd50k_dir: Path = DATA / "fsd50k"
+    esc50_dir: Path = DATA / "esc50"
+    librispeech_dir: Path = DATA / "librispeech"
+    musan_dir: Path = DATA / "musan"
+    demand_dir: Path = DATA / "demand"
     n_train_talkers: int = 80          # [K] 80 talkers for training
     n_val_talkers: int = 10
     n_test_talkers: int = 20
@@ -114,12 +117,27 @@ class DataCfg:
     background_snr_db: tuple = (10, 5) # [NEW] stretch condition: transients + babble/DEMAND
     heldout_transient_fraction: float = 0.3
     grandma_class: str = "Crumpling_and_crinkling"         # ALWAYS held out of training. Verify name in FSD50K vocabulary.csv
-    # Candidate FSD50K classes for transients. VERIFY each against FSD50K/ground_truth/vocabulary.csv.
+    # Candidate FSD50K classes for transients, MOST SPECIFIC FIRST. FSD50K labels propagate up the ontology
+    # (a "Knock" clip is usually also labelled "Door"), so each clip is assigned the first class in this
+    # list that appears in its labels. Names are checked against vocabulary.csv at download time.
     transient_classes: tuple = (
-        "Crumpling_and_crinkling", "Keys_jangling", "Knock", "Door", "Slam", "Glass", "Shatter",
-        "Dishes_and_pots_and_pans", "Cutlery_and_silverware", "Tap", "Zipper_(clothing)", "Scissors",
-        "Drawer_open_or_close", "Coin_(dropping)", "Finger_snapping", "Clapping", "Typing", "Packing_tape_and_duct_tape",
+        "Crumpling_and_crinkling", "Keys_jangling", "Knock", "Slam", "Shatter", "Chink_and_clink",
+        "Cutlery_and_silverware", "Dishes_and_pots_and_pans", "Zipper_(clothing)", "Scissors",
+        "Drawer_open_or_close", "Coin_(dropping)", "Finger_snapping", "Clapping", "Typing",
+        "Packing_tape_and_duct_tape", "Hammer", "Crack", "Thump_and_thud", "Tap", "Door", "Glass",
     )
+    # Clips carrying any of these labels are dropped, so "transients" never contain speech or music.
+    transient_exclude_labels: tuple = (
+        "Speech", "Human_voice", "Male_speech_and_man_speaking", "Female_speech_and_woman_speaking",
+        "Child_speech_and_kid_speaking", "Conversation", "Singing", "Music", "Laughter", "Shout", "Yell",
+    )
+    transient_pre_peak_ms: float = 50.0     # kept before the transient's peak
+    transient_post_peak_ms: float = 450.0   # kept after it
+    transient_min_peakiness_db: float = 15.0  # peak frame vs median frame level; rejects non-transient clips
+    utts_per_talker: tuple = (20, 10, 15)   # train / val / test -> 1600 / 100 / 300 (matches Keshavarzi's 1600 / 300)
+    speech_rms: float = 0.05                # speech is normalised to this RMS before mixing (~ -26 dBFS)
+    fsd50k_splits: tuple = ("eval",)        # first pass: FSD50K eval split only (~6.6 GB); add "dev" for more data
+    cache_dir: Path = DATA / "cache"
     seed: int = 0
 
 
@@ -148,7 +166,7 @@ class Config:
     attn: AttnCfg = field(default_factory=AttnCfg)
     mask: MaskNetCfg = field(default_factory=MaskNetCfg)
     data: DataCfg = field(default_factory=DataCfg)
-    out_dir: Path = Path("runs")
+    out_dir: Path = PROJECT_DIR / "runs"
 
 
 CFG = Config()

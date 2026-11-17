@@ -1,12 +1,12 @@
-# Core (pin exact versions once the environment is set up)
+# Tested with Python 3.13 on CPU (pin exact versions once the environment is final)
 jax
 numpy
+scipy
 matplotlib
-soundfile
-soxr            # resampling 48k -> 16k
+soundfile        # reads VCTK .flac / FSD50K .wav
 pandas
 pytest
-# Metrics
-pystoi
-pesq
-pyclarity       # HASPI / HASQI / hearing-loss simulation (Clarity Challenge toolkit)
+pystoi           # STOI / ESTOI
+# Optional
+# pesq           # PESQ-WB; does not build on Python 3.13 here, used automatically if installed
+# pyclarity      # HASPI / HASQI (simulated hearing loss) — planned

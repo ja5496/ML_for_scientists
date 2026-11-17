@@ -35,6 +35,27 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
                                        mask × mixture spectrum → overlap-add → output (~7.5 ms delay)
 ```
 
+## Status (first pass: stage 0–1)
+
+| Part | Status |
+|---|---|
+| Data download (VCTK via your proposal's datashare link, FSD50K eval split) | **implemented & run** |
+| Mixing at a given STR, fixed val/test recipes | **implemented & tested** |
+| Gammatone front end, ideal mask, resynthesis | **implemented & tested** |
+| MCTR (B), Keshavarzi RNN (C), continuous-memory RNN (D), ideal mask (I) | **implemented & tested** |
+| Training loop, metrics (STOI, ESTOI, SI-SDR, transient attenuation, speech preserved), stage-1 driver + figure | **implemented & tested** |
+| Belief network, memories, attention, variants E–H, streaming, money plot from data | pseudocode (stages 2–6) |
+
+Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`.
+
+```bash
+pip install -r requirements.txt
+python data_download.py                 # ~30 min: VCTK subset (~2,000 sentences) + FSD50K eval split (~6 GB)
+python run_experiments.py stage1 --smoke    # 2-minute check of the whole pipeline on synthetic audio
+python run_experiments.py stage1        # trains C and D, scores A B C D I -> runs/stage1/
+python -m pytest -q                     # 12 tests: reconstruction, STR, causality, recipes
+```
+
 ## Files, in the order they are used
 
 | # | File | What it does |
@@ -57,11 +78,14 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | 15 | `run_experiments.py` | The full experiment grid and ablations |
 | 16 | `test_causality.py` | Tests that nothing uses future audio |
 | 17 | `money_plot.py` | The headline figure (currently a sketch made from hypothetical numbers) |
+| – | `audio_store.py` | Packs thousands of clips into one file per split (fast loading) |
+| – | `synthetic_audio.py` | Fake speech/transients for smoke tests only — never results |
+| – | `optim.py` | Adam + gradient clipping (from Lab 2) |
+| – | `test_frontend.py`, `test_data_mixing.py` | Unit tests |
 
-Each `.py` file opens with **PLAIN WORDS** (for a human reader) followed by **PSEUDOCODE** (for the
-implementing agent). Function bodies are stubs that raise `NotImplementedError`. The exceptions are
-`config.py`, the tree helpers in `dbn_distributed.py` (`python dbn_distributed.py` prints the tree)
-and `money_plot.py`, which already run.
+Each `.py` file opens with **PLAIN WORDS** (for a human reader). Implemented files then describe what was
+built and any choices the papers left open; files for later stages still contain **PSEUDOCODE** for the
+implementing agent, with stubs that raise `NotImplementedError`.
 
 ## Money plot (sketch)
 
