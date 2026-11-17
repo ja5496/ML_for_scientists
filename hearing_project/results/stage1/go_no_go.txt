@@ -1,0 +1,11 @@
+Stage-1 go/no-go (averaged over all test conditions and STRs):
+  A NP           STOI 0.905   transient attenuation   0.0 dB   speech preserved 1.000
+  B MCTR         STOI 0.905   transient attenuation   0.9 dB   speech preserved 0.999
+  C RNN-3        STOI 0.925   transient attenuation  11.6 dB   speech preserved 0.976
+  D RNN-stream   STOI 0.925   transient attenuation  11.9 dB   speech preserved 0.976
+  I IRM          STOI 0.980   transient attenuation  22.2 dB   speech preserved 0.976
+  [PASS] C (RNN-3) STOI > A (no processing)
+  [PASS] C (RNN-3) STOI > B (MCTR)
+  [PASS] C (RNN-3) STOI < I (ideal mask)
+  [PASS] C removes more transient than B (dB)
+  => GO to stage 2

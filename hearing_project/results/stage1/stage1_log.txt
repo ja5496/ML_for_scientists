@@ -1,0 +1,60 @@
+[C] mode=window3 params=152,384 steps=2000 batch=16 -> /home/user/ML_for_scientists/hearing_project/runs/stage1/C/seed0
+  step   100  train 0.0956  val 0.0585  *  (0.7 min)
+  step   200  train 0.0497  val 0.0532  *  (1.4 min)
+  step   300  train 0.0453  val 0.0485  *  (2.2 min)
+  step   400  train 0.0426  val 0.0476  *  (2.8 min)
+  step   500  train 0.0401  val 0.0449  *  (3.5 min)
+  step   600  train 0.0392  val 0.0471  (4.1 min)
+  step   700  train 0.0400  val 0.0434  *  (4.8 min)
+  step   800  train 0.0394  val 0.0427  *  (5.5 min)
+  step   900  train 0.0376  val 0.0427  *  (6.2 min)
+  step  1000  train 0.0371  val 0.0418  *  (6.9 min)
+  step  1100  train 0.0370  val 0.0412  *  (7.6 min)
+  step  1200  train 0.0367  val 0.0410  *  (8.3 min)
+  step  1300  train 0.0363  val 0.0401  *  (9.0 min)
+  step  1400  train 0.0353  val 0.0408  (9.7 min)
+  step  1500  train 0.0349  val 0.0408  (10.4 min)
+  step  1600  train 0.0348  val 0.0397  *  (11.1 min)
+  step  1700  train 0.0350  val 0.0393  *  (11.8 min)
+  step  1800  train 0.0350  val 0.0389  *  (12.5 min)
+  step  1900  train 0.0347  val 0.0392  (13.2 min)
+  step  2000  train 0.0352  val 0.0385  *  (13.9 min)
+[D] mode=stream params=152,384 steps=2000 batch=16 -> /home/user/ML_for_scientists/hearing_project/runs/stage1/D/seed0
+  step   100  train 0.0813  val 0.0539  *  (0.8 min)
+  step   200  train 0.0410  val 0.0440  *  (1.6 min)
+  step   300  train 0.0394  val 0.0423  *  (2.3 min)
+  step   400  train 0.0358  val 0.0368  *  (3.0 min)
+  step   500  train 0.0310  val 0.0343  *  (3.8 min)
+  step   600  train 0.0288  val 0.0340  *  (4.5 min)
+  step   700  train 0.0295  val 0.0316  *  (5.2 min)
+  step   800  train 0.0286  val 0.0321  (5.9 min)
+  step   900  train 0.0274  val 0.0297  *  (6.6 min)
+  step  1000  train 0.0274  val 0.0310  (7.3 min)
+  step  1100  train 0.0267  val 0.0281  *  (8.0 min)
+  step  1200  train 0.0245  val 0.0301  (8.7 min)
+  step  1300  train 0.0248  val 0.0272  *  (9.4 min)
+  step  1400  train 0.0251  val 0.0272  (10.1 min)
+  step  1500  train 0.0228  val 0.0258  *  (10.9 min)
+  step  1600  train 0.0222  val 0.0248  *  (11.6 min)
+  step  1700  train 0.0223  val 0.0250  (12.3 min)
+  step  1800  train 0.0227  val 0.0248  (13.0 min)
+  step  1900  train 0.0219  val 0.0257  (13.7 min)
+  step  2000  train 0.0227  val 0.0234  *  (14.4 min)
+  scoring A (NP) on 1800 mixtures ...
+  scoring B (MCTR) on 1800 mixtures ...
+  scoring C (RNN-3) on 1800 mixtures ...
+  scoring D (RNN-stream) on 1800 mixtures ...
+  scoring I (IRM) on 1800 mixtures ...
+Stage-1 go/no-go (averaged over all test conditions and STRs):
+  A NP           STOI 0.905   transient attenuation   0.0 dB   speech preserved 1.000
+  B MCTR         STOI 0.905   transient attenuation   0.9 dB   speech preserved 0.999
+  C RNN-3        STOI 0.925   transient attenuation  11.6 dB   speech preserved 0.976
+  D RNN-stream   STOI 0.925   transient attenuation  11.9 dB   speech preserved 0.976
+  I IRM          STOI 0.980   transient attenuation  22.2 dB   speech preserved 0.976
+  [PASS] C (RNN-3) STOI > A (no processing)
+  [PASS] C (RNN-3) STOI > B (MCTR)
+  [PASS] C (RNN-3) STOI < I (ideal mask)
+  [PASS] C removes more transient than B (dB)
+  => GO to stage 2
+
+figure: /home/user/ML_for_scientists/hearing_project/runs/stage1/stage1_results.png
