@@ -197,3 +197,24 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
 - MCTR: running RMS = 50-ms one-pole smoother over past frames; bin→channel map {0,1},{2},{3,4},{5,6,7},{8..16}; Tukey 0.5.
 - Evaluation: 100 of the 300 test sentences per (condition, STR) cell by default (`--n 300` for all).
 - PESQ unavailable on this Python build; HASPI/HASQI not yet added.
+
+## 8. Stages 2–4 (implemented 2026-11-17): decisions and deviations
+
+- **Pretraining audio (8.7 h):** LibriSpeech dev-clean 3 h (talkers disjoint from VCTK), FSD50K eval clips with
+  *none* of the 22 transient labels: 4 h sounds + 2 h music. Replaces Bellur's TIMIT / BBC SFX / music (not open)
+  and MUSAN (11-GB download).
+- **CRBM:** causal convolution, probabilistic max-pooling (Lee et al. 2009) in both sampling and free energy,
+  CD-1 implemented as autodiff of F(v0) − F(v1) with v1 fixed, Adam lr 1e-3, sparsity s = 0.05 / λ = 5 (Bellur).
+  Mean firing settles at ~10–14 % rather than 5 % (loss normalised per frame; still sparse). Gaussian visible
+  units for LSN11, Bernoulli above. Up to 10 passes per sub-network with early stopping on held-out reconstruction.
+- **Bug caught before the long run:** pooled output was computed as sigmoid(log(1+S)) instead of S/(1+S)
+  (always > 0.5); fixed and pinned by `test_dbn.py::test_pooling_values`.
+- **Memories:** NMF, 4 speech + 2 transient + 2 "other" prototypes per sub-network, from TRAINING data only.
+  Go/no-go: on held-out speech vs held-out transients, the speech share of the online belief should differ by > 0.2
+  in at least 3 sub-networks.
+- **Attention:** online projection (5 projected-gradient NNLS steps per frame), 200-ms exponentially weighted
+  coherence, soft gate (β = −0.1, temperature 0.05), α = 0.7; the rejected stream (1 − g)·F is kept as input.
+- **Mask estimator for F/G/H:** per-sub-network readout (→16), stream selection from the previous LSTM state,
+  LayerNorm, then Keshavarzi's LSTM(128) → LSTM(64) → Dense(64). Belief network + memories frozen (stage 4).
+- **Variant E** is matched to H's *total* size (trainable mask net + frozen belief network).
+- **Causality** of every model (C, D, F, G, H) is tested end to end (`test_causality.py`).

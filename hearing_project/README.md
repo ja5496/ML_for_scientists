@@ -35,25 +35,25 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
                                        mask × mixture spectrum → overlap-add → output (~7.5 ms delay)
 ```
 
-## Status (first pass: stage 0–1)
+## Status (first pass)
 
 | Part | Status |
 |---|---|
-| Data download (VCTK via your proposal's datashare link, FSD50K eval split) | **implemented & run** |
-| Mixing at a given STR, fixed val/test recipes | **implemented & tested** |
-| Gammatone front end, ideal mask, resynthesis | **implemented & tested** |
-| MCTR (B), Keshavarzi RNN (C), continuous-memory RNN (D), ideal mask (I) | **implemented & tested** |
-| Training loop, metrics (STOI, ESTOI, SI-SDR, transient attenuation, speech preserved), stage-1 driver + figure | **implemented & tested** |
-| Belief network, memories, attention, variants E–H, streaming, money plot from data | pseudocode (stages 2–6) |
+| Stage 0–1: data (VCTK via your proposal's datashare link, FSD50K), mixing, front end, MCTR, baseline RNNs C/D, metrics | **implemented, run, results in `results/stage1/`** |
+| Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **implemented & tested; pretraining running on CPU** |
+| Stage 3: speech/transient memories (NMF) + go/no-go | **implemented & tested** (runs after stage 2) |
+| Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, money plot from data | **implemented & tested** (runs after stage 3) |
+| Stage 5 (end-to-end fine-tuning), streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
-Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`.
+Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`, `www.openslr.org`.
 
 ```bash
 pip install -r requirements.txt
-python data_download.py                 # ~30 min: VCTK subset (~2,000 sentences) + FSD50K eval split (~6 GB)
-python run_experiments.py stage1 --smoke    # 2-minute check of the whole pipeline on synthetic audio
-python run_experiments.py stage1        # trains C and D, scores A B C D I -> runs/stage1/
-python -m pytest -q                     # 12 tests: reconstruction, STR, causality, recipes
+python data_download.py                     # ~30 min: VCTK subset, FSD50K eval split, pretraining audio
+python run_experiments.py stage1 --smoke    # 2-minute check of the baseline pipeline on synthetic audio
+python run_experiments.py stage1            # trains C and D, scores A B C D I  (~45 min CPU)
+./run_pipeline.sh                           # stages 2–4 (~5 h CPU, resumable): pretrain DBN, memories, E–H, money plot
+python -m pytest -q                         # 23 tests: reconstruction, STR, causality of every model, CRBM, attention
 ```
 
 ## Files, in the order they are used
@@ -81,7 +81,8 @@ python -m pytest -q                     # 12 tests: reconstruction, STR, causali
 | – | `audio_store.py` | Packs thousands of clips into one file per split (fast loading) |
 | – | `synthetic_audio.py` | Fake speech/transients for smoke tests only — never results |
 | – | `optim.py` | Adam + gradient clipping (from Lab 2) |
-| – | `test_frontend.py`, `test_data_mixing.py` | Unit tests |
+| – | `test_frontend.py`, `test_data_mixing.py`, `test_dbn.py`, `test_attention.py` | Unit tests |
+| – | `run_pipeline.sh` | Runs stages 2–4 in order; resumable |
 
 Each `.py` file opens with **PLAIN WORDS** (for a human reader). Implemented files then describe what was
 built and any choices the papers left open; files for later stages still contain **PSEUDOCODE** for the
