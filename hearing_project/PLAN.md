@@ -175,3 +175,25 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
 4. **Compute** of the DBN on a hearing-aid chip. Mitigation: slim config, report MACs, distill later.
 5. **Subjective comfort** (the real endpoint) needs human listeners and IRB approval. This plan
    uses objective proxies only; a listening test is future work.
+
+## 7. First pass (stage 0–1): what was actually built
+
+**Data (downloaded 2026-11-17).**
+- The proposal's datashare link *is* the VCTK 0.92 corpus. 2,000 sentences were read straight out of the
+  11.7-GB zip (HTTP range requests): train 80 talkers × 20 = 1,600 (60% female, as in VCTK), val 10 × 10,
+  test 20 × 15 = 300 (50/50). Utterances 001–024 (passages read by every talker) are excluded.
+- FSD50K **eval** split only (first pass). 22 transient classes, each clip cut to 50 ms before / 450 ms after
+  its peak, clips that aren't spiky (peak − median < 15 dB) or contain speech/music dropped.
+  - seen (train/val/test): Chink_and_clink, Clapping, Crack, Dishes_and_pots_and_pans, Door, Drawer_open_or_close,
+    Finger_snapping, Glass, Keys_jangling, Packing_tape_and_duct_tape, Scissors, Shatter, Tap, Typing, Zipper → 857 / 105 / 114 clips
+  - unseen (test only): Coin_(dropping), Cutlery_and_silverware, Hammer, Knock, Slam, Thump_and_thud → 595 clips
+    (caveat: this random split put most *impact* sounds in the unseen group)
+  - grandma (test only): Crumpling_and_crinkling → 78 clips
+
+**Choices the papers leave open (report these):**
+- Window: sqrt-Hann analysis + synthesis (perfect reconstruction) instead of Keshavarzi's Hann analysis.
+- Speech normalised to RMS 0.05 before mixing; STR uses Keshavarzi's 5-ms peak window (verified exact to 0.01 dB).
+- Training: 2,000 steps × 16 two-second crops ≈ 4× Keshavarzi's frame budget, dynamic mixing, constant lr 1e-3.
+- MCTR: running RMS = 50-ms one-pole smoother over past frames; bin→channel map {0,1},{2},{3,4},{5,6,7},{8..16}; Tukey 0.5.
+- Evaluation: 100 of the 300 test sentences per (condition, STR) cell by default (`--n 300` for all).
+- PESQ unavailable on this Python build; HASPI/HASQI not yet added.

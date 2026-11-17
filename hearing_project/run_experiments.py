@@ -78,7 +78,9 @@ def select_test_rows(recipes: dict, n_per_cell: int, seed: int = 0) -> list:
 def evaluate(corpus, run_dir: Path, rows: list, models: dict, variants=STAGE1_VARIANTS, workers: int = 4) -> list:
     mixes = [dm.realise(corpus, r) for r in rows]
     for m, r in zip(mixes, rows):
-        m.update(speech_idx=r["speech_idx"], trans=r["trans"], trans_idx=r["trans_idx"])
+        m.update(speech_idx=r["speech_idx"], trans=r["trans"], trans_idx=r["trans_idx"],
+                 trans_label=corpus.transients[r["trans"]].meta[r["trans_idx"]].get("label"),
+                 talker=corpus.speech["test"].meta[r["speech_idx"]].get("talker"))
     results = []
     for v in variants:
         outs = mv.process_batch(v, mixes, models.get(v))
