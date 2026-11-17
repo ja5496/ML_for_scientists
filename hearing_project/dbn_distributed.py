@@ -62,9 +62,7 @@ Streaming version (for enhance_stream.py / deployment):
 
 Cost accounting (report in the paper/poster):
     MACs per base frame = sum over LSNs of (U * C_in * W) / rate
-    Full size (U=300, W=12): ~15.4M parameters, ~9.1M MACs per base frame (~3.6 GMAC/s at 400 frames/s).
-    Easy on a GPU; ~100x a hearing-aid budget. That is acceptable for the proof of concept — compression later.
-    For training, jit + vmap the forward pass and cache DBN outputs for the fixed val/test sets.
+    With U=48, W=12: root ~37k MACs/frame, whole tree ~O(100k) MACs/frame (~40 MMAC/s at 400 frames/s).
 """
 
 import jax

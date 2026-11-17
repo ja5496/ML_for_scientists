@@ -8,7 +8,7 @@ A gain near 1 means "this is speech, keep it"; near 0 means "this is mostly tran
 
 What changes is what it gets to look at. Besides the 64 filterbank energies it always had, it now
 also receives, from each of the 15 belief sub-networks:
-  - a compressed (50-number) summary of the speech-coherent and speech-incoherent activity, and
+  - a compressed (16-number) summary of the speech-coherent and speech-incoherent activity, and
   - the three live belief numbers (speech / transient / leftover).
 
 "Stream selection" (an idea Bellur & Elhilali proposed as future work): a tiny extra layer looks at
@@ -25,11 +25,9 @@ PSEUDOCODE FOR THE IMPLEMENTING AGENT
 -------------------------------------
 init_mask_net(key, variant) -> params:
     in_fb   = 64 if variant uses filterbank skip else 0
-    in_dbn  = 15 * readout_dim (50) = 750 if variant uses DBN else 0
+    in_dbn  = 15 * readout_dim (16) if variant uses DBN else 0
     in_bel  = 15 * 3 if variant uses attention else 0
-    readout[lsn]: Dense(2U -> 50) + ReLU if attention (concat F_att, F_rej) else Dense(U -> 50) + ReLU
-                  (U = 300: mirrors Bellur's 50-unit per-LSN layer; a per-LSN causal LSTM(50) is an optional
-                   closer match to Bellur's LOCs if the dense readout underperforms)
+    readout[lsn]: Dense(2U -> 16) if attention (concat F_att, F_rej) else Dense(U -> 16)
     selector:     Dense(64 -> 15)   (reads previous LSTM-2 hidden state)   if use_stream_selection
     norm:         LayerNorm(in_fb + in_dbn + in_bel)
     lstm1: LSTM(in -> sizes[0]); lstm2: LSTM(sizes[0] -> sizes[1]); out: Dense(sizes[1] -> 64)
@@ -38,7 +36,7 @@ init_mask_net(key, variant) -> params:
 
 step(params, carry, x_t) -> carry, mask_t:      # ONE 2.5-ms frame; used by lax.scan and by streaming
     fb_t, dbn_t (dict lsn -> (F_att_t, F_rej_t)), bel_t (15, 3) = x_t
-    z_lsn = [readout[l](concat(F_att_t[l], F_rej_t[l])) for l in 15]       # each (50,)
+    z_lsn = [readout[l](concat(F_att_t[l], F_rej_t[l])) for l in 15]       # each (16,)
     if stream selection:
         w = softmax(selector(carry.h2_prev))                                 # (15,), causal (previous state)
         z_lsn = [15 * w[l] * z_lsn[l]]

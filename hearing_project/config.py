@@ -44,7 +44,7 @@ class AudioCfg:
 @dataclass(frozen=True)
 class DBNCfg:
     n_layers: int = 4                  # [B] 4 layers -> 1 + 2 + 4 + 8 = 15 local sub-networks (LSNs)
-    units_per_lsn: int = 300           # [B] full Bellur size (proof of concept; ~15.4M DBN params, ~3.6 GMAC/s)
+    units_per_lsn: int = 48            # [NEW] slim; Bellur used 300. "bellur_size" preset below.
     basis_width: int = 12              # [NEW] frames per CRBM basis (12 x 2.5 ms = 30 ms); Bellur: 6 x 6 ms = 36 ms. Slowest LSN then sees ~0.45 s
     pool_left: int = 1                 # [B] eta  (left child keeps the parent's rate)
     pool_right: int = 3                # [B] tau  (right child is 3x slower)
@@ -54,12 +54,10 @@ class DBNCfg:
     lr: float = 1e-3
     epochs_per_layer: int = 10
     backend: str = "crbm"              # "crbm" (faithful) or "sparse_conv_ae" (fallback if CD is unstable)
-    readout_dim_per_lsn: int = 50      # [B] like Bellur's 50-unit LOC layer -> 15 x 50 = 750 fused features (= Bellur's DOC input)
+    readout_dim_per_lsn: int = 16      # [NEW] each LSN is projected to 16 dims before fusion (15 x 16 = 240)
 
 
-# Proof-of-concept phase: full size is the default. Shrinking for a hearing-aid chip is a LATER step
-# (distillation / pruning), only worth doing once the full-size model shows a benefit.
-HEARING_AID_SIZE = DBNCfg(units_per_lsn=48, readout_dim_per_lsn=16)   # for the later compression phase; not used now
+BELLUR_SIZE = DBNCfg(units_per_lsn=300, basis_width=6, readout_dim_per_lsn=50)  # upper-bound experiment
 
 
 ###########################################################

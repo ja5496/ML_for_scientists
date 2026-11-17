@@ -33,8 +33,7 @@ diagnostics():
     3. sanity: activations on speech vs. transients — print mean firing of each LSN on each
        (a first hint of whether some LSNs separate them)
 
-Compute: ~9 h of audio at full size (U=300): expect a few GPU-hours per layer. Use mixed precision if memory-bound;
-precompute and cache each trained layer's outputs on disk so the next layer does not recompute ancestors.
+Compute: ~9 h of audio; each layer trains in minutes–hours on one GPU at U=48.
 """
 
 from config import CFG
