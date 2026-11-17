@@ -17,7 +17,7 @@ Ablations (each answers one question):
   3. Number of speech memories: 1 (Bellur) vs 4
   4. Keep vs drop the "rejected" stream                   -> does keeping transient evidence help?
   5. Stream selection on/off
-  6. Slim (48 units) vs Bellur-size (300 units) belief network
+  6. (Later, only if H wins) compression: full size (300 units) vs HEARING_AID_SIZE (48 units) / distilled student
   7. CRBM vs sparse autoencoder DBN backend
   8. Frozen vs fine-tuned belief network
 

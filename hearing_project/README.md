@@ -8,7 +8,7 @@ Goal: reduce crinkles, clatters and knocks for hearing-aid wearers by combining
 
 1. Keep Keshavarzi's 64-band gammatone "ear", since Bellur's belief network needs a spectrogram as
    its input and can't replace the filterbank.
-2. Add a causal, hearing-aid-sized version of Bellur's 15-branch belief network on top of it, trained
+2. Add a full-size, delay-free version of Bellur's 15-branch belief network on top of it (proof of concept; shrinking comes later), trained
    without labels on open everyday audio, so the network sees the sound at many time scales (up to ~0.45 s of past context).
 3. Give each branch stored "memories" of speech and of transients, and use an online attention gate
    that boosts activity moving in step with speech and splits off activity that doesn't.

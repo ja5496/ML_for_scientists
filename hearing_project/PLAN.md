@@ -86,15 +86,22 @@ For *mask estimation* the network needs to know **where the transient is** in or
 it. So the mask estimator receives three streams: raw filterbank energies, the attended
 (speech-coherent) DBN features, and the rejected (speech-incoherent) DBN features.
 
-### 1.7 Size: shrink the DBN to hearing-aid scale
-Bellur: 15 LSNs × 300 units = 4,500 features/frame plus 15 BLSTM classifiers. Too big.
-Plan: 15 LSNs × 32–64 units, each projected to 16 dims (240 total) before the LSTM. A
-"Bellur-size" config is kept for an upper-bound experiment.
+### 1.7 Size: full Bellur size for the proof of concept; shrink later
+First question: does the idea work at all? So the belief network is kept at Bellur's size:
+15 LSNs × 300 units (4,500 features/frame), ~15.4M parameters, ~3.6 GMAC/s. That's easy on a GPU and
+~100× a hearing-aid budget. Each LSN is read out to 50 dims (like Bellur's per-LSN layer) → 750 fused
+features, plus the 64 filterbank bands and 45 belief numbers, into the LSTM.
+Shrinking (fewer units, pruning, or distilling into a small student) is a separate later phase, run
+only if the full-size model wins. The setting for that phase (`HEARING_AID_SIZE`) is already in `config.py` but unused.
+Causality (no future audio) is **kept** even now: it costs little, and without it a win could vanish
+the moment the model runs in real time.
 
 ### 1.8 Fair comparisons (so the result is undeniable)
 Two obvious objections, each with a control:
 - "It's just more context." → **Variant D**: baseline LSTM that is stateful over the whole utterance.
-- "It's just more parameters." → **Variant E**: baseline LSTM with parameters matched to the proposed model.
+- "It's just more parameters." → **Variant E**: baseline LSTM with as many *trainable* parameters as the
+  proposed model (~1.0M). The frozen, label-free belief network (~15.4M) is reported separately: an LSTM with
+  16M trainable parameters would mostly test overfitting, not this idea.
 The proposed model must beat *both*, not just the original 3-frame RNN.
 
 ## 2. Data (all open-source)
@@ -137,6 +144,7 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
 | 4 | Train mask estimator on frozen DBN + attention | `train_mask_estimator.py` | Beats variants C, D, E on validation |
 | 5 | Optional end-to-end fine-tune (Bellur's stated future goal) | same | Small further gain, no overfitting |
 | 6 | Evaluation, ablations, money plot | `evaluate_metrics.py`, `run_experiments.py`, `money_plot.py` | Money plot generated from real numbers |
+| 7 | *(Later, only if stage 6 is positive)* compress to hearing-aid size | `HEARING_AID_SIZE` in `config.py` | How much of the gain survives at ~1/100 of the compute |
 
 ## 4. Model variants
 
@@ -172,6 +180,7 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
    perturbs future input and asserts current output is unchanged.
 3. **CRBM training is finicky** (contrastive divergence, sparsity). Fallback: a causal sparse
    convolutional autoencoder with the same tree topology (flag in `config.py`).
-4. **Compute** of the DBN on a hearing-aid chip. Mitigation: slim config, report MACs, distill later.
+4. **Compute.** Not a constraint for the proof of concept (one GPU is enough; cache DBN outputs for the
+   fixed test sets). Becomes the main problem in the later compression phase: full size is ~100× a hearing-aid budget.
 5. **Subjective comfort** (the real endpoint) needs human listeners and IRB approval. This plan
    uses objective proxies only; a listening test is future work.

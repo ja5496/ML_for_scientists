@@ -7,7 +7,8 @@ is processed and sent out immediately, using only what has already been heard. T
 things a hearing aid must satisfy:
   1. The streaming output is identical to the offline (whole-file) output — proof that nothing
      secretly used the future during training or evaluation.
-  2. The delay stays at ~7.5 ms (Keshavarzi's figure), and the compute per chunk is small enough.
+  2. The delay stays at ~7.5 ms (Keshavarzi's figure). Compute per chunk is MEASURED and reported, not
+     constrained, during the proof of concept (the full-size belief network is far beyond a hearing-aid chip).
 
 PSEUDOCODE FOR THE IMPLEMENTING AGENT
 -------------------------------------

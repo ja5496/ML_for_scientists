@@ -34,7 +34,9 @@ features(x) by variant:
     A:        M = ones;  I: M = ideal_ratio_mask(s, v + n)  (needs the clean reference)
 
 Sizing variant E:
-    target = count_params(H mask net) + count_params(DBN)   # count the frozen DBN too: it's real model size
+    target = count_params(H's TRAINABLE part: readouts + selector + LSTMs + output)   # ~1.0M at full size
+    (The frozen, label-free DBN, ~15.4M params, is NOT counted: matching an LSTM to 16M parameters would only
+     test overfitting. Report the DBN size separately and say so plainly in the write-up.)
     binary-search a width multiplier k so LSTM sizes (128k, 64k) give count_params(E) within 2% of target
     print both counts in the experiment log.
 
