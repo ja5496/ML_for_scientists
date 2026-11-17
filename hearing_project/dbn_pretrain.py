@@ -227,11 +227,7 @@ def load_dbn(out_dir: Path = DBN_DIR) -> tuple:
 
 def diagnostics(params: dict, stats: dict, history: dict, out_dir: Path = DBN_DIR, synthetic: bool = False):
     """Training curves, LSN11 templates, and speech-vs-transient firing per LSN (from stage-1 packs)."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
     import data_mixing as dm
-    from money_plot import INK, INK_2, SURFACE, _style_axes
 
     report = {}
     try:
@@ -253,16 +249,33 @@ def diagnostics(params: dict, stats: dict, history: dict, out_dir: Path = DBN_DI
     except FileNotFoundError:
         pass
     (out_dir / "diagnostics.json").write_text(json.dumps(report, indent=1))
+    plot_diagnostics(params, history, report, out_dir, synthetic)
+    return report
 
-    fig = plt.figure(figsize=(15, 9), facecolor=SURFACE)
-    ax = fig.add_subplot(2, 2, 1); _style_axes(ax)
+
+def plot_diagnostics(params: dict, history: dict, report: dict, out_dir: Path = DBN_DIR, synthetic: bool = False):
+    """Draw diagnostics.png: training curves, speech-vs-transient similarity per LSN, LSN11 templates."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from money_plot import INK, SURFACE, _style_axes
+
+    fig = plt.figure(figsize=(15, 10), facecolor=SURFACE)
+    outer = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.95], hspace=0.42)
+    top = outer[0].subgridspec(1, 2, wspace=0.22)
+    ax = fig.add_subplot(top[0]); _style_axes(ax)
+    layer_colour = {1: "#2a78d6", 2: "#1baf7a", 3: "#eb6834", 4: "#7a5bd0"}
+    seen = set()
     for lsn, h in history.items():
         if h:
             r0 = h[0]["held_out_recon"]
-            ax.plot([x["step"] for x in h], [x["held_out_recon"] / r0 for x in h], lw=1.4, label=f"LSN{lsn[0]}{lsn[1]}")
+            lab = None if lsn[0] in seen else f"layer {lsn[0]} ({sum(1 for l in history if l[0] == lsn[0])} LSNs)"
+            seen.add(lsn[0])
+            ax.plot([x["step"] for x in h], [x["held_out_recon"] / r0 for x in h], lw=1.4, alpha=0.85,
+                    color=layer_colour.get(lsn[0], INK), label=lab)
     ax.set_title("Held-out reconstruction error (relative to first check)", loc="left", fontsize=11, color=INK)
-    ax.set_xlabel("step"); ax.legend(fontsize=7, ncol=3, frameon=False)
-    ax = fig.add_subplot(2, 2, 2); _style_axes(ax)
+    ax.set_xlabel("training step"); ax.legend(fontsize=9, frameon=False)
+    ax = fig.add_subplot(top[1]); _style_axes(ax)
     if report:
         names = list(report)
         ax.bar(np.arange(len(names)), [report[n]["cosine_speech_vs_transient"] for n in names], color="#2a78d6")
@@ -273,26 +286,42 @@ def diagnostics(params: dict, stats: dict, history: dict, out_dir: Path = DBN_DI
     if (1, 1) in params:
         K = np.asarray(params[(1, 1)]["K"])                     # (U, 64, W)
         order = np.argsort(-np.abs(K).reshape(K.shape[0], -1).max(1))[:16]
+        grid = outer[1].subgridspec(2, 8, wspace=0.12, hspace=0.12)
         for j, u in enumerate(order):
-            a = fig.add_subplot(4, 16, 33 + j + (16 if j >= 8 else 0) - (8 if j >= 8 else 0))
+            a = fig.add_subplot(grid[j // 8, j % 8])
             lim = np.abs(K[u]).max()
             a.imshow(K[u], origin="lower", aspect="auto", cmap="RdBu_r", vmin=-lim, vmax=lim)
             a.set_xticks([]); a.set_yticks([])
-        fig.text(0.05, 0.47, "LSN11 templates (rows: 64 gammatone bands, low→high; columns: 12 frames = 30 ms; red = excitatory)",
-                 fontsize=11, color=INK)
+            if j == 0:
+                a.set_title("LSN11 templates (rows: 64 gammatone bands, low→high; columns: 12 frames = 30 ms; "
+                            "red = excitatory)", loc="left", fontsize=11, color=INK, pad=8)
     if synthetic:
         fig.text(0.5, 0.5, "SYNTHETIC SMOKE TEST", ha="center", fontsize=40, color="#b8322f", alpha=0.25, rotation=20)
     fig.savefig(out_dir / "diagnostics.png", dpi=140, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
-    return report
+
+
+def replot_diagnostics(out_dir: Path = DBN_DIR):
+    """Re-draw diagnostics.png from saved checkpoints + diagnostics.json (no network evaluation)."""
+    params, history = {}, {}
+    for lsn in dd.lsn_ids():
+        ckpt = Path(out_dir) / f"lsn{lsn[0]}{lsn[1]}.pkl"
+        if ckpt.exists():
+            d = pickle.load(open(ckpt, "rb"))
+            params[lsn], history[lsn] = d["params"], d["history"]
+    report = json.loads((Path(out_dir) / "diagnostics.json").read_text())
+    plot_diagnostics(params, history, report, out_dir)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true", help="synthetic audio, 2 LSNs, a few steps")
     ap.add_argument("--epochs", type=float, default=CFG.dbn.epochs_per_layer)
+    ap.add_argument("--replot", action="store_true", help="re-draw diagnostics.png from saved checkpoints")
     a = ap.parse_args()
-    if a.smoke:
+    if a.replot:
+        replot_diagnostics()
+    elif a.smoke:
         import synthetic_audio
         from audio_store import save_pack
         syn = synthetic_audio.build()

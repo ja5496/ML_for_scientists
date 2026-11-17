@@ -1,0 +1,77 @@
+{
+ "LSN11": {
+  "speech_mean_firing": 0.173598051071167,
+  "transient_mean_firing": 0.37237900495529175,
+  "cosine_speech_vs_transient": 0.7470701336860657
+ },
+ "LSN21": {
+  "speech_mean_firing": 0.0527779720723629,
+  "transient_mean_firing": 0.04363609850406647,
+  "cosine_speech_vs_transient": 0.5745925903320312
+ },
+ "LSN22": {
+  "speech_mean_firing": 0.1359299123287201,
+  "transient_mean_firing": 0.10662101209163666,
+  "cosine_speech_vs_transient": 0.666083574295044
+ },
+ "LSN31": {
+  "speech_mean_firing": 0.0704641044139862,
+  "transient_mean_firing": 0.07124557346105576,
+  "cosine_speech_vs_transient": 0.664463996887207
+ },
+ "LSN32": {
+  "speech_mean_firing": 0.1956714391708374,
+  "transient_mean_firing": 0.20881253480911255,
+  "cosine_speech_vs_transient": 0.7471039295196533
+ },
+ "LSN33": {
+  "speech_mean_firing": 0.08436094969511032,
+  "transient_mean_firing": 0.08903953433036804,
+  "cosine_speech_vs_transient": 0.6176788210868835
+ },
+ "LSN34": {
+  "speech_mean_firing": 0.23490092158317566,
+  "transient_mean_firing": 0.2634221315383911,
+  "cosine_speech_vs_transient": 0.7270722389221191
+ },
+ "LSN41": {
+  "speech_mean_firing": 0.05333411693572998,
+  "transient_mean_firing": 0.04338766261935234,
+  "cosine_speech_vs_transient": 0.5286374688148499
+ },
+ "LSN42": {
+  "speech_mean_firing": 0.15048454701900482,
+  "transient_mean_firing": 0.13817766308784485,
+  "cosine_speech_vs_transient": 0.673942506313324
+ },
+ "LSN43": {
+  "speech_mean_firing": 0.04841428995132446,
+  "transient_mean_firing": 0.042096272110939026,
+  "cosine_speech_vs_transient": 0.521605908870697
+ },
+ "LSN44": {
+  "speech_mean_firing": 0.13157683610916138,
+  "transient_mean_firing": 0.11486686766147614,
+  "cosine_speech_vs_transient": 0.6203426122665405
+ },
+ "LSN45": {
+  "speech_mean_firing": 0.053639136254787445,
+  "transient_mean_firing": 0.04402606934309006,
+  "cosine_speech_vs_transient": 0.47010642290115356
+ },
+ "LSN46": {
+  "speech_mean_firing": 0.13005635142326355,
+  "transient_mean_firing": 0.13188891112804413,
+  "cosine_speech_vs_transient": 0.6779434680938721
+ },
+ "LSN47": {
+  "speech_mean_firing": 0.059258557856082916,
+  "transient_mean_firing": 0.046923037618398666,
+  "cosine_speech_vs_transient": 0.5284924507141113
+ },
+ "LSN48": {
+  "speech_mean_firing": 0.13394132256507874,
+  "transient_mean_firing": 0.1360032856464386,
+  "cosine_speech_vs_transient": 0.6489466428756714
+ }
+}

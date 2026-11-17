@@ -1,0 +1,77 @@
+{
+ "LSN11": {
+  "speech_share_on_speech": 0.8558312058448792,
+  "speech_share_on_transient": 0.5881137847900391,
+  "gap": 0.2677174210548401
+ },
+ "LSN21": {
+  "speech_share_on_speech": 0.8411321640014648,
+  "speech_share_on_transient": 0.45788535475730896,
+  "gap": 0.3832468092441559
+ },
+ "LSN22": {
+  "speech_share_on_speech": 0.8727457523345947,
+  "speech_share_on_transient": 0.564330518245697,
+  "gap": 0.3084152340888977
+ },
+ "LSN31": {
+  "speech_share_on_speech": 0.8251609206199646,
+  "speech_share_on_transient": 0.5253878235816956,
+  "gap": 0.29977309703826904
+ },
+ "LSN32": {
+  "speech_share_on_speech": 0.8320640325546265,
+  "speech_share_on_transient": 0.5409895777702332,
+  "gap": 0.2910744547843933
+ },
+ "LSN33": {
+  "speech_share_on_speech": 0.8748408555984497,
+  "speech_share_on_transient": 0.5756269693374634,
+  "gap": 0.29921388626098633
+ },
+ "LSN34": {
+  "speech_share_on_speech": 0.8027796745300293,
+  "speech_share_on_transient": 0.5542641282081604,
+  "gap": 0.2485155463218689
+ },
+ "LSN41": {
+  "speech_share_on_speech": 0.8180720210075378,
+  "speech_share_on_transient": 0.40663382411003113,
+  "gap": 0.4114381968975067
+ },
+ "LSN42": {
+  "speech_share_on_speech": 0.83577960729599,
+  "speech_share_on_transient": 0.503398060798645,
+  "gap": 0.33238154649734497
+ },
+ "LSN43": {
+  "speech_share_on_speech": 0.8489173054695129,
+  "speech_share_on_transient": 0.4197414517402649,
+  "gap": 0.42917585372924805
+ },
+ "LSN44": {
+  "speech_share_on_speech": 0.8689378499984741,
+  "speech_share_on_transient": 0.4979054927825928,
+  "gap": 0.37103235721588135
+ },
+ "LSN45": {
+  "speech_share_on_speech": 0.8244194388389587,
+  "speech_share_on_transient": 0.39958807826042175,
+  "gap": 0.424831360578537
+ },
+ "LSN46": {
+  "speech_share_on_speech": 0.860871434211731,
+  "speech_share_on_transient": 0.48419731855392456,
+  "gap": 0.3766741156578064
+ },
+ "LSN47": {
+  "speech_share_on_speech": 0.8472051024436951,
+  "speech_share_on_transient": 0.5046204924583435,
+  "gap": 0.34258460998535156
+ },
+ "LSN48": {
+  "speech_share_on_speech": 0.8875367641448975,
+  "speech_share_on_transient": 0.45648497343063354,
+  "gap": 0.4310517907142639
+ }
+}

@@ -1,0 +1,17 @@
+Stage-3 memory check (held-out speech vs held-out transients; speech share of the belief):
+  LSN11: on speech 0.86  on transients 0.59  gap +0.27
+  LSN21: on speech 0.84  on transients 0.46  gap +0.38
+  LSN22: on speech 0.87  on transients 0.56  gap +0.31
+  LSN31: on speech 0.83  on transients 0.53  gap +0.30
+  LSN32: on speech 0.83  on transients 0.54  gap +0.29
+  LSN33: on speech 0.87  on transients 0.58  gap +0.30
+  LSN34: on speech 0.80  on transients 0.55  gap +0.25
+  LSN41: on speech 0.82  on transients 0.41  gap +0.41
+  LSN42: on speech 0.84  on transients 0.50  gap +0.33
+  LSN43: on speech 0.85  on transients 0.42  gap +0.43
+  LSN44: on speech 0.87  on transients 0.50  gap +0.37
+  LSN45: on speech 0.82  on transients 0.40  gap +0.42
+  LSN46: on speech 0.86  on transients 0.48  gap +0.38
+  LSN47: on speech 0.85  on transients 0.50  gap +0.34
+  LSN48: on speech 0.89  on transients 0.46  gap +0.43
+  15/15 sub-networks separate speech from transients (gap > 0.2) -> GO
