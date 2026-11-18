@@ -44,7 +44,7 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
 | Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
 | Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **run, 3 seeds: a gentle fine-tune does not help; H's lead over E survives more training. Results in `results/stage5/`** |
-| Stage 6: longer training (C, E, H to 4,000 and 8,000 steps, same data): does H's lead hold toward convergence? | **running on CPU** (started 2026-11-18 21:10 UTC, ~10 h for 3 seeds) |
+| Stage 6: longer training (C, E, H to 4,000 and 8,000 steps, same data): does H's lead hold toward convergence? | **implemented, not run** (stopped by request on 2026-11-18 after ~10 min; resumable with `python run_experiments.py stage6`) |
 | Audible demo: H vs C on four held-out test sentences (`make_demo.py` → `results/demo/`) | **done** |
 | Streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
