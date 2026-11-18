@@ -465,6 +465,9 @@ def multiseed(seeds=(0, 1, 2), variants=("C", "E", "G", "H"), n_per_cell: int = 
     (run_dir / "multiseed_summary.txt").write_text(text)
     print(text)
     _plot_multiseed(eq, run_dir / "multiseed_seeds.png", variants)
+    import money_plot                                          # headline figures now average over the seeds
+    print("money plot:", money_plot.make_money_plot(from_results=True, run_dir=run_dir))
+    print("ablation frontier:", money_plot.make_frontier_plot(run_dir, run_dir / "stage4_ablation_frontier.png"))
     return text
 
 
@@ -478,18 +481,26 @@ def _plot_multiseed(eq, out_path: Path, variants):
     col = "ta_db_at_sp_0.975"
     fig, ax = plt.subplots(figsize=(7.2, 4.2), facecolor=SURFACE)
     _style_axes(ax)
+    seeds = sorted(eq.seed.unique())
+    marks, offs = ("o", "s", "^", "D", "v"), np.linspace(0.16, -0.16, len(seeds)) if len(seeds) > 1 else [0.0]
     for i, v in enumerate(variants):
-        g = eq[eq.variant == v][col].to_numpy()
-        ax.scatter(g, np.full(len(g), i), s=70, color=style[v]["color"], edgecolor=SURFACE, linewidth=1.5, zorder=3)
-        ax.plot([g.mean()] * 2, [i - 0.28, i + 0.28], color=INK, lw=2, zorder=4)
+        g = eq[eq.variant == v]
+        for k, s in enumerate(seeds):           # each seed on its own sub-row + shape, so equal values never hide
+            x = g[g.seed == s][col].to_numpy()
+            ax.scatter(x, np.full(len(x), i + offs[k]), s=64, marker=marks[k % len(marks)], color=style[v]["color"],
+                       edgecolor=SURFACE, linewidth=1.2, zorder=3, label=f"seed {s}" if i == 0 else None)
+        ax.plot([g[col].mean()] * 2, [i - 0.3, i + 0.3], color=INK, lw=2, zorder=4, label="mean" if i == 0 else None)
+    leg = ax.legend(loc="lower right", frameon=False, fontsize=9, labelcolor=INK, ncol=len(seeds) + 1)
+    for h in leg.legend_handles[:-1]:
+        h.set_color(INK_2)
     ax.set_yticks(range(len(variants)))
     ax.set_yticklabels([style[v]["label"] if f"({v})" in style[v]["label"] else f"{style[v]['label']} ({v})"
                         for v in variants], fontsize=9.5, color=INK)
     ax.set_xlabel("Transient attenuation (dB) at speech preserved = 0.975   →  better", fontsize=10.5, color=INK)
     ax.set_title("Does the ranking survive retraining?", loc="left", fontsize=12, color=INK, fontweight="bold", pad=26)
-    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Dot = one training seed; bar = mean over seeds.",
+    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Marker = one training seed (shape = which seed); bar = mean over seeds.",
             transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
-    ax.set_ylim(-0.6, len(variants) - 0.4)
+    ax.set_ylim(-0.95, len(variants) - 0.5)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return out_path

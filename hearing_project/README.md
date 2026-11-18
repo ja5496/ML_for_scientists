@@ -42,7 +42,7 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 0–1: data (VCTK via your proposal's datashare link, FSD50K), mixing, front end, MCTR, baseline RNNs C/D, metrics | **implemented, run, results in `results/stage1/`** |
 | Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **run; weights + diagnostics in `results/stage2_3/`** |
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
-| Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run; results in `results/stage4/`** |
+| Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
 | Stage 5 (end-to-end fine-tuning), streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
 Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`, `www.openslr.org`.
@@ -54,6 +54,7 @@ python run_experiments.py stage1 --smoke    # 2-minute check of the baseline pip
 python run_experiments.py stage1            # trains C and D, scores A B C D I  (~45 min CPU)
 ./run_pipeline.sh                           # stages 2–4 (~4 h CPU, resumable): pretrain DBN, memories, E–H, money plot
 python run_experiments.py refresh4          # redo trade-off sweep / verdict / figures from saved stage-4 results
+python run_experiments.py multiseed         # retrain C, E, G, H with seeds 1-2 (~3 h CPU, resumable); redraws the money plot
 python -m pytest -q                         # 23 tests: reconstruction, STR, causality of every model, CRBM, attention
 ```
 
@@ -89,20 +90,22 @@ Each `.py` file opens with **PLAIN WORDS** (for a human reader). Implemented fil
 built and any choices the papers left open; files for later stages still contain **PSEUDOCODE** for the
 implementing agent, with stubs that raise `NotImplementedError`.
 
-## First-pass results (CPU, 1 training seed, 1,800 test mixtures per model)
+## First-pass results (CPU, 3 training seeds for the key models, 1,800 test mixtures per model)
 
 ![money plot from results](figures/money_plot_results.png)
 
-- **The proposed model (H) beats Keshavarzi's RNN (C).** STOI is +0.003–0.005 better in every condition
-  (p < 1e-11). On transient types never seen in training it removes +2.2 dB more transient, and +1.3 to +3.1 dB more
-  when both are tuned to damage speech equally. The biggest gains are on unseen impact sounds (knocks +3.4 dB).
-- **Against an LSTM of the same size and memory (E), the gain is small but consistent:** +0.4 to +0.85 dB at equal
-  speech quality, +0.0026 STOI on unseen types (p = 2e-14). With only one training seed, this needs seeds 1–2 to confirm.
-- **Ablations** (`results/stage4/stage4_ablation_frontier.png`): removing the filterbank (F) makes the model *worse
-  than the original RNN*, so the ear → cortex design is right. Removing attention (G) leaves a model that ties E; the attention
-  gate adds ~0.45 dB at equal speech quality.
+- **The proposed model (H) beats Keshavarzi's RNN (C) on every training seed.** STOI is +0.004–0.005 better in every
+  condition. On transient types never seen in training it removes +2.3 dB more transient. When both models are tuned to
+  damage speech equally, it removes +0.9 to +2.6 dB more. The biggest gains are on unseen impact sounds (knocks, cutlery, hammers).
+- **It also beats an LSTM of the same size and memory (E) on every seed:** +0.6 to +1.3 dB at equal speech quality
+  (smallest single-seed gain +0.4 dB), and +0.002–0.004 STOI with essentially no loss of speech. The 3-seed check
+  (`results/stage4/multiseed/`) was run to test exactly this, and the gain held.
+- **Ablations** (`results/stage4/stage4_ablation_frontier.png`):
+  - Removing the filterbank (F) makes the model *worse than the original RNN*, so the ear → cortex design is right.
+  - The belief-network features alone (G) beat E by +0.2 to +0.9 dB.
+  - The attention gate adds ~0.45 dB on average at equal speech quality, but not on every seed.
 - **Crinkling** (grandma's complaint) is already the easiest category (C, E, G and H all remove 10–19 dB).
-  The new model's gains are on unseen impact sounds, not on crinkling.
+  The gain over the original RNN there is not significant; the new model's gains are on unseen impact sounds.
 - Still far from the ideal mask (22 dB, STOI 0.980). Details and caveats: [`results/stage4/README.md`](results/stage4/README.md);
   next steps: `PLAN.md` §9.
 

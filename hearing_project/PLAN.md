@@ -225,16 +225,19 @@ Full numbers and caveats: `results/stage2_3/README.md`, `results/stage4/README.m
 
 - **Stage 3 go/no-go: GO, 15/15.** Every sub-network separates held-out speech from held-out transients (gap 0.25–0.43).
   The deepest, slowest sub-networks separate best.
-- **H beats Keshavarzi's RNN (C):** +0.003–0.005 STOI in every condition, +2.2 dB transient removed on unseen
-  types, and +1.3 to +3.1 dB at equal speech quality.
+- **H beats Keshavarzi's RNN (C) on all 3 training seeds:** +0.004–0.005 STOI in every condition, +2.3 dB transient
+  removed on unseen types, and +0.9 to +2.6 dB at equal speech quality (seed means).
 - **Keep the filterbank (decision 1.1 confirmed):** the belief network alone (F) is worse than C.
-- **Against the fair control (E, same size and memory), the gain is small:** +0.4 to +0.85 dB at equal quality, +0.0026 STOI on
-  unseen types, one seed. The attention gate is worth ~0.45 dB at equal quality; without it the belief network ≈ E.
-- **Crinkling (the grandmother's complaint)** is already the easiest category (C, E, G and H all remove 10–19 dB);
-  the new model's gains are on unseen *impact* sounds (knock, slam, thud, hammer, cutlery).
+- **H beats the fair control (E, same size and memory) on all 3 seeds:** +0.6 / +1.0 / +1.3 dB at equal speech quality
+  (gentle → harsh; smallest single-seed gain +0.4 dB), and +0.002–0.004 STOI with speech preserved unchanged.
+- **Both new parts contribute.** The belief-network features alone (G) beat E by +0.2 to +0.9 dB on average and never fall below E on any seed. Attention adds
+  ~0.45 dB on average but not on every seed (−0.15 to +1.1 dB). As trained, it reliably makes the model gentler.
+- **Crinkling (the grandmother's complaint)** is already the easiest category (C, E, G and H all remove 10–19 dB).
+  H vs C there is not significant (+0.3 dB); the clear gains are on unseen *impact* sounds (knock, slam, thud, hammer, cutlery).
 
 Next, in order of value per CPU-hour:
-1. Seeds 1–2 for C, E, G, H (~1.5 h): decides whether H > E is real. Add CIs to the equal-quality frontier by bootstrapping over sentences.
+1. ~~Seeds 1–2 for C, E, G, H~~ done (2026-11-18): H > E and H > C hold on every seed.
 2. Stage 5 fine-tuning of H (unfreeze the belief network at lr 1e-5): the frozen network was never told what the mask needs.
-3. Tune attention (α, β) on VALIDATION data: attention currently trades attenuation for speech preservation.
+3. Tune attention (α, β) on VALIDATION data: attention currently trades attenuation for speech preservation, and its
+   equal-quality benefit varies by seed.
 4. A harder crinkling test (louder STRs, babble background) and HASPI with the Keshavarzi audiograms.

@@ -224,17 +224,56 @@ def _x_at(curve, y_ref):
     return np.nan
 
 
+def _seed_tables(run_dir: Path):
+    """Every training seed on disk. Seed 0 = the stage-4 files (all variants); seeds 1+ = runs/stage1/multiseed/
+    (written by `run_experiments.py multiseed`). Returns (trade-off rows, per-mixture results), both with a seed column."""
+    import pandas as pd
+    run_dir = Path(run_dir)
+    to = [pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv").assign(seed=0)]
+    res = [pd.read_csv(run_dir / "stage4_results_per_utterance.csv").assign(seed=0)]
+    for f in sorted((run_dir / "multiseed").glob("seed*_tradeoff.csv")):
+        k = int(f.name[4:].split("_")[0])
+        r = f.with_name(f"seed{k}_results.csv")
+        if k == 0 or not r.exists():
+            continue
+        to.append(pd.read_csv(f).assign(seed=k))
+        res.append(pd.read_csv(r).assign(seed=k))
+    return pd.concat(to, ignore_index=True), pd.concat(res, ignore_index=True)
+
+
+def _mean_curves(to):
+    """Average each model's trade-off curve over its seeds, point by point (same exponent p)."""
+    return (to.groupby(["variant", "p"], as_index=False)
+              .agg(ta_db_mean=("ta_db_mean", "mean"), sp_mean=("sp_mean", "mean"), n_seeds=("seed", "nunique")))
+
+
+def _gain_over_seeds(to, a, b, y_ref):
+    """Per-seed extra attenuation of model a over model b where both cross speech-preserved = y_ref."""
+    g = []
+    for s in sorted(set(to[to.variant == a].seed) & set(to[to.variant == b].seed)):
+        g.append(_x_at(to[(to.variant == a) & (to.seed == s)], y_ref) - _x_at(to[(to.variant == b) & (to.seed == s)], y_ref))
+    return np.array([x for x in g if np.isfinite(x)])
+
+
 def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__file__).parent / "figures" / "money_plot_results.png"):
-    """Left: attenuation-vs-speech frontier (unseen transients, STR -15 dB). Right: STOI vs STR (unseen)."""
+    """Left: attenuation-vs-speech frontier (unseen transients, STR -15 dB). Right: STOI vs STR (unseen).
+    C, E and H are averaged over every training seed on disk (seed 0 = stage 4; seeds 1+ = runs/stage1/multiseed/)."""
     import pandas as pd
     from config import CFG
     run_dir = Path(run_dir or CFG.out_dir / "stage1")
     smoke = run_dir.name == "smoke"
     if smoke:                                   # never let a smoke-test figure land where real results go
         out_path = run_dir / "money_plot_SMOKE.png"
-    to = pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv")
     sm = pd.read_csv(run_dir / "stage4_summary.csv")
     cell = lambda v, cond="unseen", st=-15.0: sm[(sm.variant == v) & (sm.cond == cond) & (sm.str_db == st)]
+    if smoke:
+        to_all = pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv").assign(seed=0)
+        res_all = None
+    else:
+        to_all, res_all = _seed_tables(run_dir)
+    to = _mean_curves(to_all)                       # one curve per model = mean over its training seeds
+    n_seeds = to_all.groupby("variant").seed.nunique().to_dict()
+    n_max = max(n_seeds.get(v, 1) for v in ("C", "E", "H"))
 
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 6.6), facecolor=SURFACE, gridspec_kw=dict(wspace=0.30))
     _style_axes(axL)
@@ -243,6 +282,10 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
         if c.empty:
             continue
         st = STYLE[v]
+        if n_seeds.get(v, 1) > 1:                   # thin = each training seed; thick = their mean
+            for _, cs in to_all[to_all.variant == v].groupby("seed"):
+                cs = cs.sort_values("p")
+                axL.plot(cs.ta_db_mean, cs.sp_mean, color=st["color"], lw=0.9, alpha=0.35, zorder=st["z"] - 1)
         axL.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], zorder=st["z"], label=st["label"], marker=".", ms=5)
         op = c[c.p == 1.0]
         axL.plot(op.ta_db_mean, op.sp_mean, marker=st["marker"], ms=10, color=st["color"], mec=SURFACE, mew=2, zorder=st["z"] + 1)
@@ -253,7 +296,7 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
         else:
             axL.annotate(st["short"], (c.ta_db_mean.iloc[-1], c.sp_mean.iloc[-1]), xytext=(6, 0),
                          textcoords="offset points", va="center", ha="left", fontsize=10, color=INK)
-    for v, mk, lbl, off in (("B", "D", "MCTR (B)", (8, -16)), ("I", "*", "Ideal mask", (6, 6))):
+    for v, mk, lbl, off in (("B", "D", "MCTR (B)", (8, -16)), ("I", "*", "Ideal mask", (7, -14))):
         d = cell(v)
         if not d.empty:
             axL.plot(d.ta_db_mean, d.speech_preserved_mean, marker=mk, ms=12 if v == "I" else 8, color=STYLE[v]["color"],
@@ -271,17 +314,26 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
             axL.axhline(y_ref, color=MUTED, lw=0.8, ls=(0, (2, 3)), zorder=1)
             axL.annotate("", xy=(xh, y_ref), xytext=(xc, y_ref),
                          arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.8, mutation_scale=16), zorder=9)
-            msg = f"At equal speech quality (dotted line), H removes\n{xh - xc:+.1f} dB more transient than the original RNN (C)"
-            if np.isfinite(xe):
-                msg += f"\n{xh - xe:+.1f} dB more than the size-matched LSTM (E)"
-            axL.text(0.03, 0.04, msg, transform=axL.transAxes, ha="left", va="bottom", fontsize=10, color=INK,
+            gc, ge = _gain_over_seeds(to_all, "H", "C", y_ref), _gain_over_seeds(to_all, "H", "E", y_ref)
+            rng = lambda g: f"   (per seed: {g.min():+.1f} to {g.max():+.1f})" if len(g) > 1 else ""
+            msg = ("At equal speech quality (dotted line), H removes"
+                   + (f" (mean of {len(gc)} seeds)" if len(gc) > 1 else "") + "\n"
+                   f"{gc.mean():+.1f} dB more transient than the original RNN (C){rng(gc)}")
+            if np.isfinite(xe) and len(ge):
+                msg += f"\n{ge.mean():+.1f} dB more than the size-matched LSTM (E){rng(ge)}"
+            y0, y1 = axL.get_ylim()                 # free band under the curves so the box never covers them
+            lo = float(to_all[to_all.variant.isin(["C", "E", "H"])].sp_mean.min())
+            axL.set_ylim(min(y0, lo - 0.42 * (y1 - lo)), y1)
+            axL.text(0.03, 0.03, msg, transform=axL.transAxes, ha="left", va="bottom", fontsize=10, color=INK,
                      linespacing=1.5, zorder=9,
                      bbox=dict(boxstyle="round,pad=0.5", fc=SURFACE, ec=GRID, lw=1))
     axL.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
     axL.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
     axL.set_title("A   Transient removed vs speech kept", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=40)
-    axL.text(0, 1.02, "Unseen transient types, STR −15 dB. Big marker = model as trained;\nline = same model made gentler / harsher.",
-             transform=axL.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+    sub = "Unseen transient types, STR −15 dB. Big marker = model as trained;\nline = same model made gentler / harsher."
+    if n_max > 1:
+        sub += f" Thick = mean of {n_max} training seeds, thin = each seed."
+    axL.text(0, 1.02, sub, transform=axL.transAxes, fontsize=9.5, color=INK_2, va="bottom")
 
     _style_axes(axR)
     strs = sorted(set(sm.str_db), reverse=True)
@@ -290,6 +342,11 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
     ends = []
     for v in ("A", "B", "C", "E", "I", "H"):
         d = sm[(sm.variant == v) & (sm.cond == "unseen")].sort_values("str_db", ascending=False)
+        if res_all is not None and n_seeds.get(v, 1) > 1:   # average each mixture over seeds, then CI over mixtures
+            r = res_all[(res_all.variant == v) & (res_all.cond == "unseen")]
+            per_mix = r.groupby(["str_db", "speech_idx"]).stoi.mean().groupby("str_db")
+            d = pd.DataFrame(dict(stoi_mean=per_mix.mean(), stoi_ci=1.96 * per_mix.std(ddof=1) / np.sqrt(per_mix.size())))
+            d = d.reset_index().sort_values("str_db", ascending=False)
         if d.empty:
             continue
         st = STYLE[v]
@@ -308,11 +365,13 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
     axR.set_xlabel("Speech-to-transient ratio (dB)   →  louder transient", fontsize=11, color=INK)
     axR.set_ylabel("Predicted intelligibility (STOI)", fontsize=11, color=INK)
     axR.set_title("B   Intelligibility as the transient gets louder", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=40)
-    axR.text(0, 1.02, "Unseen transient types and talkers. Shaded = loudness range used\nin training. Mean ± 95% CI.",
+    axR.text(0, 1.02, "Unseen transient types and talkers. Shaded = loudness range used\nin training. Mean ± 95% CI"
+             + (" (C, E, H: each sentence averaged over seeds)." if n_max > 1 else "."),
              transform=axR.transAxes, fontsize=9.5, color=INK_2, va="bottom")
     h, l = axR.get_legend_handles_labels()
     fig.legend(h, l, loc="lower center", ncol=3, frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.06), labelcolor=INK)
-    fig.suptitle("Experimental results — first pass (1 training seed, 100 test sentences per cell, CPU budget)",
+    seeds_txt = f"{n_max} training seeds" if n_max > 1 else "1 training seed"
+    fig.suptitle(f"Experimental results — first pass ({seeds_txt}, 100 test sentences per cell, CPU budget)",
                  x=0.5, y=1.06, fontsize=12.5, color=INK, fontweight="bold")
     if smoke:
         fig.text(0.5, 0.5, "SYNTHETIC SMOKE TEST — NOT RESULTS", ha="center", va="center", rotation=20,
@@ -328,17 +387,20 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
 def make_frontier_plot(run_dir: Path, out_path: Path, variants=("C", "E", "F", "G", "H")) -> Path:
     """Ablation frontier: transient removed vs speech kept for H and its ablations (unseen, STR -15 dB).
     Raw averages can mislead (a gentler model removes less AND keeps more); the frontier compares at equal quality."""
-    import pandas as pd
-    to = pd.read_csv(Path(run_dir) / "tradeoff_unseen_str-15.csv")
+    to_all, _ = _seed_tables(run_dir)
+    to = _mean_curves(to_all)                       # mean over each model's training seeds
+    n_seeds = to_all.groupby("variant").seed.nunique().to_dict()
     style = {**STYLE, **ABLATION_STYLE}
     fig, ax = plt.subplots(figsize=(8.4, 6.2), facecolor=SURFACE)
     _style_axes(ax)
+    plotted = []
     for v in variants:
         c = to[to.variant == v].sort_values("p")
         if c.empty:
             continue
+        plotted.append(v)
         st = style[v]
-        lab = st["label"] if f"({v})" in st["label"] else f"{st['label']} ({v})"
+        lab = st["short"] + (f" · {n_seeds[v]} seeds" if n_seeds[v] > 1 else " · 1 seed")
         ax.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], ls=st["ls"], zorder=st["z"],
                 label=lab, marker=".", ms=5)
         op = c[c.p == 1.0]
@@ -346,11 +408,15 @@ def make_frontier_plot(run_dir: Path, out_path: Path, variants=("C", "E", "F", "
                 zorder=st["z"] + 1, ls="none")
     ax.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
     ax.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
-    ax.set_title("Ablations at equal speech quality", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=34)
-    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Big marker = model as trained; line = mask ** p,\n"
-            "p = 0.5 … 3. Further right at the same height = more transient removed for the same speech damage.",
+    ax.set_title("Ablations at equal speech quality", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=50)
+    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Big marker = model as trained; line = mask ** p, p = 0.5 … 3,\n"
+            "averaged over training seeds. Further right at the same height = more transient removed for the same speech damage.\n"
+            "No attention / No filterbank = the proposed model (H) with that one part removed.",
             transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
-    ax.legend(loc="upper right", frameon=False, fontsize=9.5, labelcolor=INK)   # 5 crossing lines: legend, not end labels
+    h, l = ax.get_legend_handles_labels()           # 5 crossing lines: legend (best first), not end labels
+    x97 = [_x_at(to[to.variant == v], 0.97) for v in plotted]
+    order = sorted(range(len(h)), key=lambda i: -x97[i] if np.isfinite(x97[i]) else 0)
+    ax.legend([h[i] for i in order], [l[i] for i in order], loc="upper right", frameon=False, fontsize=9.5, labelcolor=INK)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return out_path
