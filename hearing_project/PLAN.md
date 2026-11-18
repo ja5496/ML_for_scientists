@@ -239,7 +239,12 @@ Full numbers and caveats: `results/stage2_3/README.md`, `results/stage4/README.m
 
 Next, in order of value per CPU-hour:
 1. ~~Seeds 1–2 for C, E, G, H~~ done (2026-11-18): H > E and H > C hold on every seed.
-2. Stage 5 fine-tuning of H (unfreeze the belief network at lr 1e-5): the frozen network was never told what the mask needs.
+2. ~~Stage 5 fine-tuning of H (unfreeze the belief network at lr 1e-5)~~ done (2026-11-18, 3 seeds): no gain over the
+   same extra steps with the network frozen (−0.10 to −0.18 dB at equal quality); the weights moved only 0.2%.
+   H's lead over E survives the extra steps but shrinks a little (+0.55 to +1.06 dB, was +0.60 to +1.34).
+   The extra steps alone are worth about as much as H's lead. New next steps, in order:
+   a. Train C, E and H longer on the same extra data: does H's lead hold toward convergence?
+   b. A stronger fine-tune (10× learning rates for the belief network and attention), H_ft only, ~50 min CPU per seed.
 3. Tune attention (α, β) on VALIDATION data: attention currently trades attenuation for speech preservation, and its
    equal-quality benefit varies by seed.
 4. A harder crinkling test (louder STRs, babble background) and HASPI with the Keshavarzi audiograms.

@@ -43,7 +43,7 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **run; weights + diagnostics in `results/stage2_3/`** |
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
 | Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
-| Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **seeds 0–1 done** (interim: fine-tuning did not help on either seed; H's lead over E survives more training); seed 2 running. See `results/stage5/` |
+| Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **run, 3 seeds: a gentle fine-tune does not help; H's lead over E survives more training. Results in `results/stage5/`** |
 | Audible demo: H vs C on four held-out test sentences (`make_demo.py` → `results/demo/`) | **done** |
 | Streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
@@ -114,6 +114,12 @@ implementing agent, with stubs that raise `NotImplementedError`.
   +0.003–0.006). Crinkling gets the most dB removed of any test condition (~15 dB), but it is far from solved: at
   STR −15 dB the crinkle's loudest part is still about as loud as the speech after either model. The new model's
   gains are on unseen impact sounds.
+- **End-to-end fine-tuning (stage 5, 3 seeds) does not help as run.** Unfreezing the belief network and attention
+  ties or slightly trails the same model given the same extra steps with them frozen (−0.10 to −0.18 dB at equal speech
+  quality). The fine-tune at the planned learning rate moved the belief network's weights by only 0.2%, so a stronger
+  fine-tune is untested. With 2,000 extra steps for both, H still beats the size-matched LSTM on every seed (+0.55 to
+  +1.06 dB), a little less than before (+0.60 to +1.34 dB). The extra steps alone are worth about as much as H's lead,
+  so every model is still undertrained ([`results/stage5/README.md`](results/stage5/README.md)).
 - Still far from the ideal mask (22 dB, STOI 0.980). Details and caveats: [`results/stage4/README.md`](results/stage4/README.md);
   next steps: `PLAN.md` §9.
 
