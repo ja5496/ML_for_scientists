@@ -1,0 +1,154 @@
+{
+  "seed": 1,
+  "str_db": -15.0,
+  "examples": [
+    {
+      "id": "ex1",
+      "title": "Typical crinkling",
+      "kind": "typical",
+      "transient": "Crumpling and crinkling",
+      "talker": "p257",
+      "str_db": -15.0,
+      "heard_in_training": false,
+      "cond": "grandma",
+      "speech_idx": 8,
+      "seconds": 2.82,
+      "onset_s": 1.33,
+      "peak_s": 1.38,
+      "gain_db": -0.37,
+      "scores": {
+        "mix": {
+          "ta_db": 0.0,
+          "speech_preserved": 0.9999999999999996,
+          "stoi": 0.9683832740800904
+        },
+        "C": {
+          "ta_db": 14.84819903991097,
+          "speech_preserved": 0.98778635911282,
+          "stoi": 0.98163644809646
+        },
+        "H": {
+          "ta_db": 14.475869405031585,
+          "speech_preserved": 0.9933512521858128,
+          "stoi": 0.9856542893775068
+        },
+        "ideal": {
+          "ta_db": 17.381146834310716,
+          "speech_preserved": 0.9988811997455608,
+          "stoi": 0.9988043595544974
+        }
+      }
+    },
+    {
+      "id": "ex2",
+      "title": "Typical impact sound",
+      "kind": "typical",
+      "transient": "Knock",
+      "talker": "p315",
+      "str_db": -15.0,
+      "heard_in_training": false,
+      "cond": "unseen",
+      "speech_idx": 179,
+      "seconds": 4.18,
+      "onset_s": 3.21,
+      "peak_s": 3.26,
+      "gain_db": 1.96,
+      "scores": {
+        "mix": {
+          "ta_db": 0.0,
+          "speech_preserved": 0.9999999999999948,
+          "stoi": 0.8333630846445254
+        },
+        "C": {
+          "ta_db": 0.2053247374457854,
+          "speech_preserved": 0.998163902385583,
+          "stoi": 0.8325760547741228
+        },
+        "H": {
+          "ta_db": 2.1700385686516555,
+          "speech_preserved": 0.9701330237826756,
+          "stoi": 0.8493409050121572
+        },
+        "ideal": {
+          "ta_db": 27.07835014469157,
+          "speech_preserved": 0.9682332939803564,
+          "stoi": 0.9426584719428196
+        }
+      }
+    },
+    {
+      "id": "ex3",
+      "title": "Best case for H",
+      "kind": "best",
+      "transient": "Cutlery and silverware",
+      "talker": "p287",
+      "str_db": -15.0,
+      "heard_in_training": false,
+      "cond": "unseen",
+      "speech_idx": 18,
+      "seconds": 2.59,
+      "onset_s": 2.05,
+      "peak_s": 2.1,
+      "gain_db": 17.96,
+      "scores": {
+        "mix": {
+          "ta_db": 0.0,
+          "speech_preserved": 0.9999999999999972,
+          "stoi": 0.8332564669098799
+        },
+        "C": {
+          "ta_db": 9.921378890075612,
+          "speech_preserved": 0.9328176997946508,
+          "stoi": 0.8657453394299709
+        },
+        "H": {
+          "ta_db": 27.88589653349632,
+          "speech_preserved": 0.8941594876887149,
+          "stoi": 0.877596303947813
+        },
+        "ideal": {
+          "ta_db": 40.81965476176502,
+          "speech_preserved": 0.9157876492771944,
+          "stoi": 0.9585575166592816
+        }
+      }
+    },
+    {
+      "id": "ex4",
+      "title": "Worst case for H",
+      "kind": "worst",
+      "transient": "Crumpling and crinkling",
+      "talker": "p273",
+      "str_db": -15.0,
+      "heard_in_training": false,
+      "cond": "grandma",
+      "speech_idx": 255,
+      "seconds": 3.1,
+      "onset_s": 1.61,
+      "peak_s": 1.66,
+      "gain_db": -9.11,
+      "scores": {
+        "mix": {
+          "ta_db": 0.0,
+          "speech_preserved": 0.9999999999999992,
+          "stoi": 0.9135201334022404
+        },
+        "C": {
+          "ta_db": 18.112071065728152,
+          "speech_preserved": 0.9680464774647848,
+          "stoi": 0.923538708555324
+        },
+        "H": {
+          "ta_db": 8.998996166717674,
+          "speech_preserved": 0.9925622441124782,
+          "stoi": 0.9411847172074436
+        },
+        "ideal": {
+          "ta_db": 18.06957305478312,
+          "speech_preserved": 0.993858164805036,
+          "stoi": 0.9958057114920428
+        }
+      }
+    }
+  ]
+}

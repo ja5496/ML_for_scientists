@@ -101,6 +101,7 @@ class Trained:
     variant: str
     params: dict
     stats: dict
+    extra: dict = None      # stage-5 fine-tuned models: their own {"dbn": ..., "attn": ...} replacing the frozen ones
 
     @property
     def mode(self):
@@ -108,18 +109,22 @@ class Trained:
 
     @property
     def aux(self):
-        return build_aux(self.variant, self.stats)
+        aux = build_aux(self.variant, self.stats)
+        return {**aux, **self.extra} if self.extra else aux
 
     def save(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         to_np = lambda t: jax.tree_util.tree_map(np.asarray, t)
-        pickle.dump({"variant": self.variant, "params": to_np(self.params), "stats": to_np(self.stats)}, open(path, "wb"))
+        d = {"variant": self.variant, "params": to_np(self.params), "stats": to_np(self.stats)}
+        if self.extra:
+            d["extra"] = to_np(self.extra)
+        pickle.dump(d, open(path, "wb"))
 
     @staticmethod
     def load(path: Path) -> "Trained":
         d = pickle.load(open(path, "rb"))
         to_j = lambda t: jax.tree_util.tree_map(jnp.asarray, t)
-        return Trained(d["variant"], to_j(d["params"]), to_j(d["stats"]))
+        return Trained(d["variant"], to_j(d["params"]), to_j(d["stats"]), to_j(d["extra"]) if d.get("extra") else None)
 
 
 ###########################################################
@@ -151,6 +156,19 @@ def load_frozen(dbn_dir: Path = None) -> dict:
     return _FROZEN[dbn_dir]
 
 
+def attn_params_init() -> dict:
+    """Unconstrained versions of the attention gate's settings, starting at the config values (stage 5 learns them)."""
+    A = CFG.attn
+    return {"alpha_logit": jnp.asarray(np.log(A.alpha_mix / (1 - A.alpha_mix)), jnp.float32),
+            "beta": jnp.asarray(A.beta_threshold, jnp.float32),
+            "log_temperature": jnp.asarray(np.log(A.gate_temperature), jnp.float32)}
+
+
+def attn_settings(p: dict) -> dict:
+    """alpha in (0, 1), temperature > 0."""
+    return dict(alpha=jax.nn.sigmoid(p["alpha_logit"]), beta=p["beta"], temperature=jnp.exp(p["log_temperature"]))
+
+
 def dbn_inputs(variant: str, aux: dict, x: jnp.ndarray) -> tuple:
     """Waveform (B, N) -> (fb (B,T,64) or None, Z (B,T,L,C), beliefs (B,T,L,3) or None). All causal."""
     from dbn_pretrain import dbn_features
@@ -160,7 +178,8 @@ def dbn_inputs(variant: str, aux: dict, x: jnp.ndarray) -> tuple:
     params = {(int(k[0]), int(k[1:])): v for k, v in aux["dbn"].items()}
     attn = None
     if cfg["attn"]:
-        attn = lambda F, lsn, hop: af.apply(F, (aux["W"][f"{lsn[0]}{lsn[1]}"], K_SPEECH, K_TRANS), hop)
+        kw = attn_settings(aux["attn"]) if "attn" in aux else {}     # stage 5: learned alpha / beta / temperature
+        attn = lambda F, lsn, hop: af.apply(F, (aux["W"][f"{lsn[0]}{lsn[1]}"], K_SPEECH, K_TRANS), hop, **kw)
     out = dd.forward(params, dbn_features(x, aux["dbn_stats"]), attn)
     lsns = [l for l in dd.lsn_ids() if l in out]
     hold = lambda a, l: dd.hold_to_base(a, dd.rate_of(*l), T)

@@ -1,0 +1,212 @@
+<title>H vs C Listening Test</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one listening column; each example is a card with a version switcher that keeps the playhead. */
+:root {
+  --bg: #f5f7fa; --surface: #ffffff; --ink: #14171c; --ink-2: #4a5160; --muted: #737b8a; --line: #dfe3ea;
+  --c: #d4581f; --h: #2a6fc9; --press: #e8eef8; --warn-bg: #fff3e0; --warn-ink: #6e4300;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "Space Grotesk", "Inter", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1216; --surface: #171b21; --ink: #e9ecf1; --ink-2: #b4bbc7; --muted: #8b93a1; --line: #2a303a;
+  --c: #f0804f; --h: #5c9ff0; --press: #1f2a3a; --warn-bg: #2b2215; --warn-ink: #f3c785; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b21; --ink: #e9ecf1; --ink-2: #b4bbc7; --muted: #8b93a1; --line: #2a303a;
+  --c: #f0804f; --h: #5c9ff0; --press: #1f2a3a; --warn-bg: #2b2215; --warn-ink: #f3c785; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 32px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+header { display: grid; gap: 12px; }
+.eyebrow { margin: 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+h1 { margin: 0; font-family: var(--font-head); font-size: clamp(28px, 5vw, 38px); line-height: 1.1; text-wrap: balance; }
+h2 { margin: 0; font-family: var(--font-head); font-size: 21px; line-height: 1.2; text-wrap: balance; }
+p { margin: 0; max-width: 68ch; }
+.lede { color: var(--ink-2); font-size: 16px; }
+.warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 10px 14px; font-size: 14px; max-width: 68ch; }
+.models { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.model { display: flex; gap: 10px; align-items: baseline; font-size: 14px; color: var(--ink-2); min-width: 0; }
+.model b { color: var(--ink); }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); transform: translateY(1px); }
+.dot.C { background: var(--c); } .dot.H { background: var(--h); }
+.dot.clean, .dot.ideal { background: transparent; border: 2px solid var(--muted); }
+
+.example { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 16px; }
+.ex-head { display: grid; gap: 4px; }
+.kind { justify-self: start; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+.meta { color: var(--muted); font-size: 13.5px; }
+.verdict { font-size: 14.5px; color: var(--ink-2); }
+.verdict b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.transport { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.play { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--ink); color: var(--bg);
+  display: grid; place-items: center; cursor: pointer; flex: none; }
+.play svg { width: 18px; height: 18px; fill: currentColor; }
+.track { flex: 1 1 220px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.track input { flex: 1; min-width: 0; accent-color: var(--ink); }
+.time { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.loop { font-size: 13px; color: var(--ink-2); display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.versions { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.ver { text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px;
+  padding: 9px 11px; cursor: pointer; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 1px;
+  font: inherit; min-width: 0; }
+.ver .dot { grid-row: 1 / span 2; align-self: start; margin-top: 6px; }
+.ver .vl { font-weight: 600; font-size: 14px; }
+.ver .vs { font-size: 12px; color: var(--muted); }
+.ver[aria-pressed="true"] { background: var(--press); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.ver.C[aria-pressed="true"] { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
+.ver.H[aria-pressed="true"] { border-color: var(--h); box-shadow: inset 0 0 0 1px var(--h); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--h); outline-offset: 2px; }
+.hint { font-size: 12.5px; color: var(--muted); }
+
+.scores { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink-2); font-size: 12.5px; }
+tr.H td { font-weight: 600; }
+figure { margin: 0; display: grid; gap: 6px; }
+figure img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+figcaption { font-size: 12.5px; color: var(--muted); }
+details { font-size: 13.5px; color: var(--ink-2); }
+summary { cursor: pointer; color: var(--ink); font-weight: 500; }
+
+.method { display: grid; gap: 10px; font-size: 14px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 20px; }
+.method h2 { font-size: 18px; color: var(--ink); }
+.method ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; max-width: 70ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">Hearing project · first-pass models · seed 1</p>
+    <h1>H vs C listening test</h1>
+    <p class="lede">Four test sentences, each with a loud everyday transient on top. Press play, then switch
+      between versions while it plays: the switch keeps your place, so you hear the same moment through each model.</p>
+    <p class="warn"><b>Turn your volume down before you press play.</b> The transient's peak is 15 dB louder than
+      the speech, so the unprocessed version is loud. Headphones make the differences easier to hear.</p>
+    <div class="models">
+      <div class="model"><span class="dot C"></span><span><b>C</b> · Keshavarzi et al. 2021 RNN, the original transient-reduction model</span></div>
+      <div class="model"><span class="dot H"></span><span><b>H</b> · proposed: same filterbank + belief network + attention</span></div>
+    </div>
+  </header>
+  <div id="examples" style="display:grid;gap:22px"></div>
+  <section class="method">
+    <h2>How these four were chosen</h2>
+    <ul>
+      <li>By rule, from the 1,800 scored test mixtures, before listening. All at STR −15 dB, the hardest level used in training.</li>
+      <li><b>Typical</b> = the sentence whose extra transient removal (H minus C) is the median for that kind of sound.
+        <b>Best</b> and <b>worst</b> = the largest and smallest H-minus-C gain.</li>
+      <li>Every talker, sentence and transient here was held out of training. Crinkling sounds and the impact-sound categories were never heard at all.</li>
+      <li>Models from training seed 1, the median seed for both C and H (seed 0 was C's weakest, which would flatter H).</li>
+      <li><b>Transient removed</b>: how much quieter the transient got (dB). <b>Speech preserved</b>: STOI of the speech
+        alone after the same processing (1.000 = untouched). <b>STOI</b>: predicted intelligibility of the output.</li>
+      <li>Averages over all test sentences and three training seeds are in <code>results/stage4/README.md</code>.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+const DATA = __DATA__;
+const ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4.5v16H6zM13.5 4H18v16h-4.5z"/></svg>';
+const players = [];
+const fmt = (t) => (isFinite(t) ? t : 0).toFixed(1);
+const el = (tag, attrs = {}, html = "") => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (html) e.innerHTML = html; return e; };
+
+function scoreTable(ex) {
+  const rows = [["mix", "Unprocessed"], ["C", "C · original RNN"], ["H", "H · proposed"], ["ideal", "Ideal mask (ceiling)"]];
+  let h = '<table><thead><tr><th>Version</th><th>Transient removed</th><th>Speech preserved</th><th>STOI</th></tr></thead><tbody>';
+  for (const [k, lab] of rows) {
+    const s = ex.scores[k];
+    h += `<tr class="${k}"><td><span class="dot ${k}" style="display:inline-block;margin-right:8px"></span>${lab}</td>` +
+         `<td>${s.ta_db.toFixed(1)} dB</td><td>${s.speech_preserved.toFixed(3)}</td><td>${s.stoi.toFixed(3)}</td></tr>`;
+  }
+  return h + "</tbody></table>";
+}
+
+function build(ex) {
+  const card = el("section", { class: "example", id: ex.id, "aria-labelledby": ex.id + "-t" });
+  const gain = ex.scores.H.ta_db - ex.scores.C.ta_db;
+  const sp = ex.scores.H.speech_preserved - ex.scores.C.speech_preserved;
+  const word = gain >= 0 ? "more" : "less";
+  card.innerHTML = `
+    <div class="ex-head">
+      <span class="kind">${ex.title}</span>
+      <h2 id="${ex.id}-t">${ex.transient}</h2>
+      <p class="meta">Talker ${ex.talker} · STR ${ex.str_db} dB · ${ex.seconds} s · transient starts at ${ex.onset_s} s</p>
+    </div>
+    <p class="verdict">Here H removes <b>${Math.abs(gain).toFixed(1)} dB ${word}</b> transient than C, with speech preserved
+      ${sp >= 0 ? "higher" : "lower"} by <b>${Math.abs(sp).toFixed(3)}</b>.</p>
+    <div class="transport">
+      <button class="play" aria-label="Play">${ICON_PLAY}</button>
+      <div class="track"><input type="range" min="0" max="1000" value="0" step="1" aria-label="Playback position" id="${ex.id}-seek"><span class="time">0.0 / ${ex.seconds.toFixed(1)} s</span></div>
+      <label class="loop"><input type="checkbox" id="${ex.id}-loop" checked> Loop</label>
+    </div>
+    <div class="versions" role="group" aria-label="Version to hear"></div>
+    <p class="hint">Tip: play, then tap C and H back and forth around ${ex.onset_s} s, where the transient hits.</p>
+    <div class="scores">${scoreTable(ex)}</div>
+    <details><summary>Spectrogram</summary>
+      <figure style="margin-top:10px"><img alt="Spectrograms of the clean speech, the unprocessed mixture, C's output and H's output for this example" src="data:image/png;base64,${ex.spectrogram}">
+      <figcaption>0–8 kHz, darker = louder, same colour scale in every row. Dashed line = transient onset.</figcaption></figure>
+    </details>`;
+  const box = card.querySelector(".versions");
+  const audios = {};
+  for (const v of DATA.versions) {
+    const b = el("button", { class: "ver " + v.key, "aria-pressed": v.key === "mix" ? "true" : "false", "data-key": v.key, type: "button" },
+      `<span class="dot ${v.key}"></span><span class="vl">${v.label}</span><span class="vs">${v.sub}</span>`);
+    box.appendChild(b);
+    const a = new Audio("data:audio/wav;base64," + ex.audio[v.key]);
+    a.preload = "auto"; a.loop = true;
+    audios[v.key] = a;
+  }
+  const state = { cur: "mix", dragging: false };
+  const playBtn = card.querySelector(".play"), seek = card.querySelector("input[type=range]"),
+        time = card.querySelector(".time"), loop = card.querySelector(".loop input");
+  const cur = () => audios[state.cur];
+  const setIcon = () => { const p = !cur().paused; playBtn.innerHTML = p ? ICON_PAUSE : ICON_PLAY; playBtn.setAttribute("aria-label", p ? "Pause" : "Play"); };
+  const tick = () => {
+    const a = cur(), d = a.duration || ex.seconds;
+    if (!state.dragging) seek.value = Math.round(1000 * a.currentTime / d);
+    time.textContent = `${fmt(a.currentTime)} / ${fmt(d)} s`;
+    if (!a.paused) requestAnimationFrame(tick);
+  };
+  const pauseOthers = () => players.forEach((p) => { if (p !== api) p.pause(); });
+  const api = { pause: () => { cur().pause(); setIcon(); } };
+  players.push(api);
+  for (const a of Object.values(audios)) {
+    a.addEventListener("play", () => { if (a === cur()) { setIcon(); requestAnimationFrame(tick); } });
+    a.addEventListener("pause", () => { if (a === cur()) setIcon(); });
+    a.addEventListener("ended", () => { if (a === cur()) { setIcon(); tick(); } });
+  }
+  playBtn.addEventListener("click", () => {
+    const a = cur();
+    if (a.paused) { pauseOthers(); a.play().catch(() => {}); } else a.pause();
+  });
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest(".ver"); if (!b) return;
+    const key = b.dataset.key; if (key === state.cur) return;
+    const old = cur(), t = old.currentTime, wasPlaying = !old.paused;
+    old.pause();
+    state.cur = key;
+    const a = cur();
+    try { a.currentTime = t; } catch (err) {}
+    box.querySelectorAll(".ver").forEach((x) => x.setAttribute("aria-pressed", x.dataset.key === key ? "true" : "false"));
+    if (wasPlaying) { pauseOthers(); a.play().catch(() => {}); }
+    setIcon(); tick();
+  });
+  seek.addEventListener("input", () => { state.dragging = true; const a = cur(); const d = a.duration || ex.seconds; time.textContent = `${fmt(seek.value / 1000 * d)} / ${fmt(d)} s`; });
+  seek.addEventListener("change", () => { const a = cur(); const d = a.duration || ex.seconds; try { a.currentTime = seek.value / 1000 * d; } catch (err) {} state.dragging = false; tick(); });
+  loop.addEventListener("change", () => { for (const a of Object.values(audios)) a.loop = loop.checked; });
+  return card;
+}
+
+const host = document.getElementById("examples");
+for (const ex of DATA.examples) host.appendChild(build(ex));
+</script>

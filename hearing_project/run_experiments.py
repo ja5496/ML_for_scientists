@@ -87,11 +87,11 @@ def evaluate(corpus, run_dir: Path, rows: list, models: dict, variants=STAGE1_VA
                  talker=corpus.speech["test"].meta[r["speech_idx"]].get("talker"))
     results = []
     for v in variants:
-        outs = mv.process_batch(v, mixes, models.get(v))
+        outs = mv.process_batch(models[v].variant if v in models else v, mixes, models.get(v))   # v may be a label like H_ft
         items = [dict(m, **o, variant=v) for m, o in zip(mixes, outs)]
         for it in items:
             it.pop("mask", None)
-        print(f"  scoring {v} ({VARIANTS[v][0]}) on {len(items)} mixtures ...", flush=True)
+        print(f"  scoring {v} ({VARIANTS[v][0] if v in VARIANTS else v}) on {len(items)} mixtures ...", flush=True)
         results += em.score_many(items, workers)
     return results
 
@@ -295,7 +295,7 @@ def tradeoff(corpus, rows, models, variants=("C", "D", "E", "F", "G", "H"), expo
     mixes = [dm.realise(corpus, r) for r in rows]
     out = []
     for v in variants:
-        masks = [o["mask"] for o in mv.process_batch(v, mixes, models.get(v))]
+        masks = [o["mask"] for o in mv.process_batch(models[v].variant if v in models else v, mixes, models.get(v))]
         for p in exponents:
             items = []
             for m, M in zip(mixes, masks):
@@ -471,13 +471,13 @@ def multiseed(seeds=(0, 1, 2), variants=("C", "E", "G", "H"), n_per_cell: int = 
     return text
 
 
-def _plot_multiseed(eq, out_path: Path, variants):
+def _plot_multiseed(eq, out_path: Path, variants, style=None, title="Does the ranking survive retraining?"):
     """One dot per seed: transient removed at speech preserved 0.975 (unseen, -15 dB). Spread = seed noise."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from money_plot import ABLATION_STYLE, INK, INK_2, STYLE, SURFACE, _style_axes
-    style = {**STYLE, **ABLATION_STYLE}
+    style = style or {**STYLE, **ABLATION_STYLE}
     col = "ta_db_at_sp_0.975"
     fig, ax = plt.subplots(figsize=(7.2, 4.2), facecolor=SURFACE)
     _style_axes(ax)
@@ -497,7 +497,7 @@ def _plot_multiseed(eq, out_path: Path, variants):
     ax.set_yticklabels([style[v]["label"] if f"({v})" in style[v]["label"] else f"{style[v]['label']} ({v})"
                         for v in variants], fontsize=9.5, color=INK)
     ax.set_xlabel("Transient attenuation (dB) at speech preserved = 0.975   →  better", fontsize=10.5, color=INK)
-    ax.set_title("Does the ranking survive retraining?", loc="left", fontsize=12, color=INK, fontweight="bold", pad=26)
+    ax.set_title(title, loc="left", fontsize=12, color=INK, fontweight="bold", pad=26)
     ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Marker = one training seed (shape = which seed); bar = mean over seeds.",
             transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
     ax.set_ylim(-0.95, len(variants) - 0.5)
@@ -506,9 +506,182 @@ def _plot_multiseed(eq, out_path: Path, variants):
     return out_path
 
 
+###########################################################
+#          STAGE 5: END-TO-END FINE-TUNING (H_ft)         #
+###########################################################
+
+FT_ARMS = (("H", True), ("H", False), ("E", False))        # -> H_ft, H_cont, E_cont (all: +2,000 steps on new data)
+FT_LABELS = ("H_ft", "H_cont", "E_cont")
+
+
+def stage5(seeds=(0, 1, 2), n_per_cell: int = 100, steps: int = 2000, batch: int = 16, smoke: bool = False):
+    """Fine-tune H end to end (belief network + attention unfrozen) and compare with two controls that get exactly
+    the same extra training with everything else frozen: H_cont (same model) and E_cont (the size-matched LSTM).
+    Resumable: a run is skipped once its `done` file exists; each seed's scores are cached in runs/stage1/stage5/.
+    The summary is rewritten after every seed, so partial results are readable while later seeds train."""
+    import pandas as pd
+    import traceback
+    if smoke:                                               # needs `stage4 --smoke` first
+        import synthetic_audio
+        corpus = dm.load_corpus(synthetic_audio.build())
+        mv.set_dbn_dir(CFG.out_dir / "smoke" / "dbn")
+        seeds, steps, batch, n_per_cell = (0,), 6, 4, 4
+    else:
+        corpus = dm.load_corpus()
+    run_dir = tm.run_dir_for(corpus)
+    out = run_dir / "stage5"; out.mkdir(exist_ok=True)
+    rows = select_test_rows(tm.get_recipes(corpus, run_dir), n_per_cell)
+    for seed in seeds:
+        for (v, unfreeze), lab in zip(FT_ARMS, FT_LABELS):
+            if not (run_dir / lab / f"seed{seed}" / "done").exists():
+                tm.finetune(v, corpus, seed=seed, n_steps=steps, batch_size=batch, unfreeze=unfreeze,
+                            val_every=3 if smoke else 100)
+        models = {lab: mv.Trained.load(run_dir / lab / f"seed{seed}" / "best.pkl") for lab in FT_LABELS}
+        f_res, f_to = out / f"seed{seed}_results.csv", out / f"seed{seed}_tradeoff.csv"
+        if not f_res.exists():
+            pd.DataFrame(evaluate(corpus, run_dir, rows, models, variants=FT_LABELS)).to_csv(f_res, index=False)
+        if not f_to.exists():
+            tradeoff(corpus, rows, models, variants=FT_LABELS).to_csv(f_to, index=False)
+        try:                                                # a plotting bug must not stop the next seed's training
+            print(summarise_stage5(run_dir), flush=True)
+        except Exception:
+            traceback.print_exc()
+
+
+def _stage5_tables(run_dir: Path):
+    """Per-mixture results and trade-off curves for C, E, H (2,000 steps) and H_ft, H_cont, E_cont, every seed
+    that has stage-5 scores."""
+    import pandas as pd
+    out = run_dir / "stage5"
+    seeds = sorted(int(f.name[4:].split("_")[0]) for f in out.glob("seed*_tradeoff.csv"))
+    res, to = [], []
+    for k in seeds:
+        if k == 0:
+            r0 = pd.read_csv(run_dir / "stage4_results_per_utterance.csv"); t0 = pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv")
+        else:
+            r0 = pd.read_csv(run_dir / "multiseed" / f"seed{k}_results.csv"); t0 = pd.read_csv(run_dir / "multiseed" / f"seed{k}_tradeoff.csv")
+        keep = ["C", "E", "H"]
+        res.append(pd.concat([r0[r0.variant.isin(keep)], pd.read_csv(out / f"seed{k}_results.csv")]).assign(seed=k))
+        to.append(pd.concat([t0[t0.variant.isin(keep)], pd.read_csv(out / f"seed{k}_tradeoff.csv")]).assign(seed=k))
+    return seeds, pd.concat(res, ignore_index=True), pd.concat(to, ignore_index=True)
+
+
+def summarise_stage5(run_dir: Path) -> str:
+    import pandas as pd
+    from scipy.stats import wilcoxon
+    seeds, df, to = _stage5_tables(run_dir)
+    pairs = [("H_ft", "H_cont"), ("H_cont", "H"), ("H_ft", "E_cont"), ("H_cont", "E_cont"), ("E_cont", "E")]
+    key = ["cond", "str_db", "speech_idx"]
+    recs = []
+    for seed in seeds:
+        d = df[df.seed == seed]
+        for a, b in pairs:
+            x = d[d.variant == a].set_index(key).sort_index(); y = d[d.variant == b].set_index(key).sort_index()
+            for cond in ("seen", "unseen", "grandma"):
+                for m in ("stoi", "ta_db", "speech_preserved"):
+                    recs.append(dict(seed=seed, pair=f"{a}-{b}", cond=cond, metric=m,
+                                     diff=float((x.loc[cond, m] - y.loc[cond, m]).mean())))
+    diffs = pd.DataFrame(recs)
+    diffs.to_csv(run_dir / "stage5_paired_diffs.csv", index=False)
+    variants = ["C", "E", "E_cont", "H", "H_cont", "H_ft"]
+    eq = pd.concat([equal_quality_table(to[(to.seed == s) & to.variant.isin(variants)], levels=(0.985, 0.975, 0.965)).assign(seed=s)
+                    for s in seeds])
+    eq.to_csv(run_dir / "stage5_equal_quality.csv", index=False)
+
+    lines = [f"Stage 5 (end-to-end fine-tuning), seeds {seeds}. H_ft, H_cont, E_cont = +2,000 steps on new data from the",
+             "stage-4 checkpoints (H_ft: belief network + attention unfrozen; H_cont / E_cont: frozen controls).", ""]
+    lines.append("Validation mask error (MSE): start -> best, and the attention settings H_ft learned:")
+    for seed in seeds:
+        parts = []
+        for lab in FT_LABELS:
+            lg = pd.read_csv(run_dir / lab / f"seed{seed}" / "log.csv")
+            parts.append(f"{lab} {lg.val_loss.iloc[0]:.5f} -> {lg.val_loss.min():.5f} (step {int(lg.step[lg.val_loss.idxmin()])})")
+        m = mv.Trained.load(run_dir / "H_ft" / f"seed{seed}" / "best.pkl")
+        a = mv.attn_settings(m.extra["attn"]) if m.extra and "attn" in m.extra else None
+        att = (f"   alpha {float(a['alpha']):.3f} beta {float(a['beta']):+.3f} T {float(a['temperature']):.4f}"
+               f" (start 0.700 / -0.100 / 0.0500)") if a else ""
+        lines.append(f"  seed {seed}: " + "   ".join(parts) + att)
+    lines += ["", "A) Per-seed paired difference (first minus second); mean ± SD over seeds:"]
+    for (pair, cond, m), g in diffs.groupby(["pair", "cond", "metric"], sort=False):
+        vals = g.sort_values("seed")["diff"].to_numpy()
+        lines.append(f"  {pair:14s} {cond:7s} {m:16s} " + "  ".join(f"{v:+.4f}" for v in vals)
+                     + f"   mean {vals.mean():+.4f}" + (f" ± {vals.std(ddof=1):.4f}" if len(vals) > 1 else "")
+                     + f"   ({int((vals > 0).sum())}/{len(vals)} seeds > 0)")
+    lines += ["", "B) Transient attenuation (dB) at equal speech quality, unseen types, STR -15 dB, per seed:"]
+    cols = [c for c in eq.columns if c.startswith("ta_db_at")]
+    for v in variants:
+        g = eq[eq.variant == v].sort_values("seed")
+        lines.append(f"  {v:7s} " + "   ".join(f"{c[-5:]}: " + " ".join(f"{x:5.2f}" for x in g[c]) + f" (mean {g[c].mean():5.2f})"
+                                            for c in cols))
+    if len(seeds) > 0:
+        avg = df.groupby(["variant"] + key)[["stoi", "ta_db", "speech_preserved"]].mean()
+        lines += ["", "C) Seed-averaged models, paired Wilcoxon over mixtures (test-set noise only, not training noise):"]
+        for a, b in pairs:
+            for cond in ("seen", "unseen", "grandma"):
+                parts = []
+                for m in ("stoi", "ta_db", "speech_preserved"):
+                    d = (avg.loc[a].loc[cond][m] - avg.loc[b].loc[cond][m]).to_numpy()
+                    parts.append(f"{m} {d.mean():+.4f} ± {1.96 * d.std(ddof=1) / np.sqrt(len(d)):.4f} (p={wilcoxon(d).pvalue:.1e})")
+                lines.append(f"  {a}-{b} [{cond:7s}] " + "   ".join(parts))
+    text = "\n".join(lines) + "\n"
+    (run_dir / "stage5_summary.txt").write_text(text)
+    style = _stage5_style()
+    _plot_multiseed(eq, run_dir / "stage5_seeds.png", ["E", "E_cont", "H", "H_cont", "H_ft"], style=style,
+                    title="Does end-to-end fine-tuning help?")
+    _plot_stage5_frontier(to, run_dir / "stage5_frontier.png", style)
+    return text
+
+
+def _stage5_style():
+    from money_plot import ABLATION_STYLE, MUTED, STYLE
+    blue, green = STYLE["H"]["color"], STYLE["E"]["color"]
+    return {**STYLE, **ABLATION_STYLE,
+            "H": dict(STYLE["H"], label="Proposed, 2,000 steps (H)", lw=1.6, ls=":", color=MUTED, marker="o"),
+            "E": dict(STYLE["E"], label="Size-matched LSTM, 2,000 steps (E)", lw=1.6, ls=":", color=MUTED, marker="s"),
+            "H_ft": dict(label="Proposed, +2,000 steps, belief network + attention fine-tuned (H_ft)", short="Fine-tuned (H_ft)",
+                         color=blue, lw=3.0, marker="o", ls="-", z=6),
+            "H_cont": dict(label="Proposed, +2,000 steps, belief network frozen (H_cont)", short="Frozen (H_cont)",
+                           color=blue, lw=1.8, marker="o", ls="--", z=5),
+            "E_cont": dict(label="Size-matched LSTM, +2,000 steps (E_cont)", short="LSTM (E_cont)",
+                           color=green, lw=2.0, marker="s", ls="-", z=4)}
+
+
+def _plot_stage5_frontier(to, out_path: Path, style):
+    """Seed-averaged trade-off curves: the three equal-budget models plus H and E at 2,000 steps for reference."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from money_plot import INK, INK_2, SURFACE, _mean_curves, _style_axes
+    mean = _mean_curves(to)
+    n = to.seed.nunique()
+    fig, ax = plt.subplots(figsize=(8.4, 6.2), facecolor=SURFACE)
+    _style_axes(ax)
+    for v in ("H_ft", "H_cont", "E_cont", "H", "E"):
+        c = mean[mean.variant == v].sort_values("p")
+        if c.empty:
+            continue
+        st = style[v]
+        ax.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], ls=st["ls"], zorder=st.get("z", 3),
+                label=st["label"], marker=".", ms=5)
+        op = c[c.p == 1.0]
+        ax.plot(op.ta_db_mean, op.sp_mean, marker=st["marker"], ms=9, color=st["color"], mec=SURFACE, mew=2,
+                zorder=st.get("z", 3) + 1, ls="none")
+    ax.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
+    ax.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
+    ax.set_title("Stage 5: end-to-end fine-tuning vs equal extra training", loc="left", fontsize=12.5, color=INK,
+                 fontweight="bold", pad=34)
+    ax.text(0, 1.02, f"Unseen transient types, STR −15 dB, mean of {n} training seed{'s' if n > 1 else ''}. "
+            "Big marker = model as trained; line = mask ** p.\nFurther right at the same height = more transient removed "
+            "for the same speech damage.", transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+    ax.legend(loc="lower left", frameon=False, fontsize=9, labelcolor=INK)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4", "multiseed"])
+    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4", "multiseed", "stage5", "summary5"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--n", type=int, default=100, help="test sentences per (condition, STR) cell")
     ap.add_argument("--steps", type=int, default=2000)
@@ -523,5 +696,9 @@ if __name__ == "__main__":
         refresh_stage4(n_per_cell=a.n)
     elif a.stage == "multiseed":
         multiseed(n_per_cell=a.n, steps=a.steps, batch=a.batch)
+    elif a.stage == "stage5":
+        stage5(n_per_cell=a.n, steps=a.steps, batch=a.batch, smoke=a.smoke)
+    elif a.stage == "summary5":
+        print(summarise_stage5(CFG.out_dir / ("smoke" if a.smoke else "stage1")))
     else:
         stage4(n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain or a.smoke, smoke=a.smoke)

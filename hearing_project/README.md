@@ -43,7 +43,9 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **run; weights + diagnostics in `results/stage2_3/`** |
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
 | Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
-| Stage 5 (end-to-end fine-tuning), streaming deployment check, HASPI/HASQI, PESQ | not yet |
+| Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **implemented; running on CPU** |
+| Audible demo: H vs C on four held-out test sentences (`make_demo.py` → `results/demo/`) | **done** |
+| Streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
 Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`, `www.openslr.org`.
 
@@ -55,6 +57,8 @@ python run_experiments.py stage1            # trains C and D, scores A B C D I  
 ./run_pipeline.sh                           # stages 2–4 (~4 h CPU, resumable): pretrain DBN, memories, E–H, money plot
 python run_experiments.py refresh4          # redo trade-off sweep / verdict / figures from saved stage-4 results
 python run_experiments.py multiseed         # retrain C, E, G, H with seeds 1-2 (~3 h CPU, resumable); redraws the money plot
+python run_experiments.py stage5            # fine-tune H end to end + equal-budget controls, 3 seeds (~5.5 h CPU, resumable)
+python make_demo.py                         # listening demo: WAVs + results/demo/demo.html (~2 min)
 python -m pytest -q                         # 23 tests: reconstruction, STR, causality of every model, CRBM, attention
 ```
 
@@ -80,6 +84,7 @@ python -m pytest -q                         # 23 tests: reconstruction, STR, cau
 | 15 | `run_experiments.py` | The full experiment grid and ablations |
 | 16 | `test_causality.py` | Tests that nothing uses future audio |
 | 17 | `money_plot.py` | The headline figure: the hypothetical sketch, and the same figure drawn from real results |
+| 18 | `make_demo.py` (+ `demo_template.html`) | Audible H vs C demo: picks examples by rule, writes WAVs, spectrograms and a web page |
 | – | `audio_store.py` | Packs thousands of clips into one file per split (fast loading) |
 | – | `synthetic_audio.py` | Fake speech/transients for smoke tests only — never results |
 | – | `optim.py` | Adam + gradient clipping (from Lab 2) |
