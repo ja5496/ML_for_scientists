@@ -636,8 +636,10 @@ def _stage5_style():
     from money_plot import ABLATION_STYLE, MUTED, STYLE
     blue, green = STYLE["H"]["color"], STYLE["E"]["color"]
     return {**STYLE, **ABLATION_STYLE,
-            "H": dict(STYLE["H"], label="Proposed, 2,000 steps (H)", lw=1.6, ls=":", color=MUTED, marker="o"),
-            "E": dict(STYLE["E"], label="Size-matched LSTM, 2,000 steps (E)", lw=1.6, ls=":", color=MUTED, marker="s"),
+            # the 2,000-step starting points keep their model's hue (colour follows the entity), as a pale dotted line
+            "H": dict(STYLE["H"], label="Proposed, 2,000 steps (H)", lw=1.6, ls=":", color="#86b4ea", marker="o", z=2),
+            "E": dict(STYLE["E"], label="Size-matched LSTM, 2,000 steps (E)", lw=1.6, ls=":", color="#7ccfae", marker="s",
+                      z=2),
             "H_ft": dict(label="Proposed, +2,000 steps, belief network + attention fine-tuned (H_ft)", short="Fine-tuned (H_ft)",
                          color=blue, lw=3.0, marker="o", ls="-", z=6),
             "H_cont": dict(label="Proposed, +2,000 steps, belief network frozen (H_cont)", short="Frozen (H_cont)",
@@ -651,8 +653,9 @@ def _plot_stage5_frontier(to, out_path: Path, style):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from money_plot import INK, INK_2, SURFACE, _mean_curves, _style_axes
+    from money_plot import INK, INK_2, SURFACE, _mean_curves, _style_axes, _x_at
     mean = _mean_curves(to)
+    plotted = []
     n = to.seed.nunique()
     fig, ax = plt.subplots(figsize=(8.4, 6.2), facecolor=SURFACE)
     _style_axes(ax)
@@ -661,6 +664,7 @@ def _plot_stage5_frontier(to, out_path: Path, style):
         if c.empty:
             continue
         st = style[v]
+        plotted.append(v)
         ax.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], ls=st["ls"], zorder=st.get("z", 3),
                 label=st["label"], marker=".", ms=5)
         op = c[c.p == 1.0]
@@ -673,7 +677,13 @@ def _plot_stage5_frontier(to, out_path: Path, style):
     ax.text(0, 1.02, f"Unseen transient types, STR −15 dB, mean of {n} training seed{'s' if n > 1 else ''}. "
             "Big marker = model as trained; line = mask ** p.\nFurther right at the same height = more transient removed "
             "for the same speech damage.", transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
-    ax.legend(loc="lower left", frameon=False, fontsize=9, labelcolor=INK)
+    # legend best-first: ordered by transient removed where each curve crosses speech preserved = 0.97
+    h, lab = ax.get_legend_handles_labels()
+    x97 = [_x_at(mean[mean.variant == v], 0.97) for v in plotted]
+    order = sorted(range(len(h)), key=lambda i: -np.nan_to_num(x97[i], nan=-1e9))
+    ax.legend([h[i] for i in order], [lab[i] for i in order], loc="lower left", frameon=False, fontsize=9,
+              labelcolor=INK, title="Best first (most removed at speech preserved 0.97)", title_fontsize=8.5,
+              alignment="left")
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return out_path
