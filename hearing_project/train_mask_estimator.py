@@ -137,7 +137,7 @@ def train(variant: str, corpus: dm.Corpus, n_steps: int = 2000, batch_size: int 
 
 def finetune(variant: str, corpus: dm.Corpus, seed: int = 0, n_steps: int = 2000, batch_size: int = 16,
              unfreeze: bool = True, lr_net: float = 1e-4, lr_dbn: float = 1e-5, val_every: int = 100,
-             tag: str = None, data_seed_offset: int = 100) -> Path:
+             tag: str = None, data_seed_offset: int = 100, start_label: str = None, label: str = None) -> Path:
     """Stage 5. Start from a trained checkpoint and train for `n_steps` more on NEW data (data seed + 100).
 
     unfreeze=True  -> "<V>_ft": the belief network (lr 1e-5) and the attention gate's alpha / beta / temperature
@@ -146,11 +146,14 @@ def finetune(variant: str, corpus: dm.Corpus, seed: int = 0, n_steps: int = 2000
                       stays frozen. Comparing the two isolates "unfreezing" from "just more training".
     The step-0 model is evaluated first and kept unless validation improves, so fine-tuning can never make the saved
     checkpoint worse on validation. No extra regulariser: at lr 1e-5 a weight can move at most ~0.02 in 2,000 steps
-    (DBN weights average |0.02|), which keeps the pretrained features in place."""
+    (DBN weights average |0.02|), which keeps the pretrained features in place.
+
+    Stage 6 (longer training) reuses this to continue a frozen run: start_label="H_cont" loads runs/.../H_cont/seed{k}
+    instead of H/seed{k}, and label="H_long" names the output. `variant` still says which model it is."""
     run_dir = run_dir_for(corpus, tag)
-    start = mv.Trained.load(run_dir / variant / f"seed{seed}" / "best.pkl")
+    start = mv.Trained.load(run_dir / (start_label or variant) / f"seed{seed}" / "best.pkl")
     unfreeze = unfreeze and variant in mv.DBN_VARIANTS
-    label = f"{variant}_ft" if unfreeze else f"{variant}_cont"
+    label = label or (f"{variant}_ft" if unfreeze else f"{variant}_cont")
     out_dir = run_dir / label / f"seed{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
     recipes = get_recipes(corpus, run_dir)
@@ -194,13 +197,13 @@ def finetune(variant: str, corpus: dm.Corpus, seed: int = 0, n_steps: int = 2000
         return np.mean([float(val_chunk(fast, slow, vx[i: i + 25], val_irm[i: i + 25])) for i in range(0, vx.shape[0], 25)])
 
     def save(fast, slow):
-        extra = None
+        extra = start.extra                                           # keep a fine-tuned start's network when frozen
         if unfreeze:
             extra = {"dbn": slow["dbn"], **({"attn": fast["attn"]} if "attn" in fast else {})}
         mv.Trained(variant, fast["net"], start.stats, extra).save(out_dir / "best.pkl")
 
     n_slow = n_params(slow)
-    print(f"[{label}] from {variant}/seed{seed}  trainable={n_params(fast) + n_slow:,} (belief network {n_slow:,})  "
+    print(f"[{label}] from {start_label or variant}/seed{seed}  trainable={n_params(fast) + n_slow:,} (belief network {n_slow:,})  "
           f"steps={n_steps} batch={batch_size} lr_net={lr_net} lr_dbn={lr_dbn if unfreeze else '-'} -> {out_dir}", flush=True)
     best = float(val_loss(fast, slow))
     save(fast, slow)

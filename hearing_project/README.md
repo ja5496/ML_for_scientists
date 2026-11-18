@@ -44,6 +44,7 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
 | Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
 | Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **run, 3 seeds: a gentle fine-tune does not help; H's lead over E survives more training. Results in `results/stage5/`** |
+| Stage 6: longer training (C, E, H to 4,000 and 8,000 steps, same data): does H's lead hold toward convergence? | **running on CPU** (started 2026-11-18 21:10 UTC, ~10 h for 3 seeds) |
 | Audible demo: H vs C on four held-out test sentences (`make_demo.py` → `results/demo/`) | **done** |
 | Streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
@@ -58,6 +59,7 @@ python run_experiments.py stage1            # trains C and D, scores A B C D I  
 python run_experiments.py refresh4          # redo trade-off sweep / verdict / figures from saved stage-4 results
 python run_experiments.py multiseed         # retrain C, E, G, H with seeds 1-2 (~3 h CPU, resumable); redraws the money plot
 python run_experiments.py stage5            # fine-tune H end to end + equal-budget controls, 3 seeds (~7 h CPU, resumable)
+python run_experiments.py stage6            # train C, E, H longer (to 8,000 steps), 3 seeds (~10 h CPU, resumable)
 python make_demo.py                         # listening demo: WAVs + results/demo/demo.html (~2 min)
 python -m pytest -q                         # 23 tests: reconstruction, STR, causality of every model, CRBM, attention
 ```

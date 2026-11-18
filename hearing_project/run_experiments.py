@@ -689,9 +689,217 @@ def _plot_stage5_frontier(to, out_path: Path, style):
     return out_path
 
 
+###########################################################
+#       STAGE 6: LONGER TRAINING (does H's lead hold?)    #
+###########################################################
+
+LONG_MODELS = ("C", "E", "H")
+BUDGETS = (2000, 4000, 8000)
+
+
+def stage6(seeds=(0, 1, 2), n_per_cell: int = 100, long_steps: int = 4000, batch: int = 16, smoke: bool = False):
+    """Train C, E and H for longer and track how far apart they stay. Stage 5 found that 2,000 extra steps are worth
+    about as much as H's lead, and that the lead shrank a little, so the headline needs checking toward convergence.
+
+    Training budgets, with every model on the same data stream within a seed:
+      2,000 steps  stage 4: C, E, H
+      4,000 steps  stage 5 controls E_cont, H_cont, plus C_cont trained here on the same stage-5 data (data seed + 100)
+      8,000 steps  C_long, E_long, H_long: +4,000 steps on new data (data seed + 200), from the 4,000-step checkpoints
+    All frozen-belief-network runs (no fine-tuning). Resumable: runs with a `done` file are skipped and each seed's scores
+    are cached in runs/stage1/stage6/. The summary and learning-curve figure are rewritten after every seed."""
+    import pandas as pd
+    import traceback
+    if smoke:                                               # needs `stage4 --smoke` and `stage5 --smoke` first
+        import synthetic_audio
+        corpus = dm.load_corpus(synthetic_audio.build())
+        mv.set_dbn_dir(CFG.out_dir / "smoke" / "dbn")
+        seeds, batch, n_per_cell = (0,), 4, 4
+    else:
+        corpus = dm.load_corpus()
+    run_dir = tm.run_dir_for(corpus)
+    out = run_dir / "stage6"; out.mkdir(exist_ok=True)
+    rows = select_test_rows(tm.get_recipes(corpus, run_dir), n_per_cell)
+    ve = 3 if smoke else 100
+    labels = ["C_cont"] + [f"{v}_long" for v in LONG_MODELS]
+    for seed in seeds:
+        if not (run_dir / "C_cont" / f"seed{seed}" / "done").exists():
+            tm.finetune("C", corpus, seed=seed, n_steps=6 if smoke else 2000, batch_size=batch, unfreeze=False, val_every=ve)
+        for v in LONG_MODELS:
+            if not (run_dir / f"{v}_long" / f"seed{seed}" / "done").exists():
+                tm.finetune(v, corpus, seed=seed, n_steps=6 if smoke else long_steps, batch_size=batch, unfreeze=False,
+                            data_seed_offset=200, start_label=f"{v}_cont", label=f"{v}_long", val_every=ve)
+        models = {lab: mv.Trained.load(run_dir / lab / f"seed{seed}" / "best.pkl") for lab in labels}
+        f_res, f_to = out / f"seed{seed}_results.csv", out / f"seed{seed}_tradeoff.csv"
+        if not f_res.exists():
+            pd.DataFrame(evaluate(corpus, run_dir, rows, models, variants=labels)).to_csv(f_res, index=False)
+        if not f_to.exists():
+            tradeoff(corpus, rows, models, variants=labels).to_csv(f_to, index=False)
+        try:
+            print(summarise_stage6(run_dir), flush=True)
+        except Exception:
+            traceback.print_exc()
+
+
+def _stage6_tables(run_dir: Path):
+    """Per-mixture results and trade-off curves for C, E, H at every training budget, for every seed with stage-6
+    scores. Adds columns `model` (C/E/H) and `steps` (2,000 / 4,000 / 8,000)."""
+    import pandas as pd
+    out6, out5 = run_dir / "stage6", run_dir / "stage5"
+    seeds = sorted(int(f.name[4:].split("_")[0]) for f in out6.glob("seed*_tradeoff.csv"))
+    name = {"C": ("C", 2000), "E": ("E", 2000), "H": ("H", 2000), "C_cont": ("C", 4000), "E_cont": ("E", 4000),
+            "H_cont": ("H", 4000), "C_long": ("C", 8000), "E_long": ("E", 8000), "H_long": ("H", 8000)}
+    res, to = [], []
+    for k in seeds:
+        if k == 0:
+            r2, t2 = run_dir / "stage4_results_per_utterance.csv", run_dir / "tradeoff_unseen_str-15.csv"
+        else:
+            r2, t2 = run_dir / "multiseed" / f"seed{k}_results.csv", run_dir / "multiseed" / f"seed{k}_tradeoff.csv"
+        for f_r, f_t in ((r2, t2), (out5 / f"seed{k}_results.csv", out5 / f"seed{k}_tradeoff.csv"),
+                         (out6 / f"seed{k}_results.csv", out6 / f"seed{k}_tradeoff.csv")):
+            r, t = pd.read_csv(f_r), pd.read_csv(f_t)
+            res.append(r[r.variant.isin(name)].assign(seed=k)); to.append(t[t.variant.isin(name)].assign(seed=k))
+    res, to = pd.concat(res, ignore_index=True), pd.concat(to, ignore_index=True)
+    for d in (res, to):
+        d["model"] = d.variant.map(lambda v: name[v][0]); d["steps"] = d.variant.map(lambda v: name[v][1])
+    return seeds, res, to
+
+
+def summarise_stage6(run_dir: Path) -> str:
+    import pandas as pd
+    seeds, df, to = _stage6_tables(run_dir)
+    levels = (0.985, 0.975, 0.965)
+    eq = pd.concat([equal_quality_table(to[(to.seed == s) & (to.steps == n)], levels=levels).assign(seed=s, steps=n)
+                    for s in seeds for n in BUDGETS])
+    eq["model"] = eq.variant.str[0]
+    eq.to_csv(run_dir / "stage6_equal_quality.csv", index=False)
+    cols = [f"ta_db_at_sp_{y:.3f}" for y in levels]
+    key = ["cond", "str_db", "speech_idx"]
+    recs = []
+    for s in seeds:
+        for n in BUDGETS:
+            d = df[(df.seed == s) & (df.steps == n)]
+            m = {v: d[d.model == v].set_index(key).sort_index() for v in LONG_MODELS}
+            for a, b in (("H", "E"), ("H", "C"), ("E", "C")):
+                for cond in ("seen", "unseen", "grandma"):
+                    for met in ("stoi", "ta_db", "speech_preserved"):
+                        recs.append(dict(seed=s, steps=n, pair=f"{a}-{b}", cond=cond, metric=met,
+                                         diff=float((m[a].loc[cond, met] - m[b].loc[cond, met]).mean())))
+    diffs = pd.DataFrame(recs)
+    diffs.to_csv(run_dir / "stage6_paired_diffs.csv", index=False)
+
+    lines = [f"Stage 6 (longer training), seeds {seeds}. Budgets: 2,000 steps (stage 4), 4,000 (stage-5 controls + C_cont),",
+             "8,000 (C_long, E_long, H_long). Belief network frozen throughout.", "",
+             "Validation mask error (MSE) at the best checkpoint of each budget:"]
+    for s in seeds:
+        parts = []
+        for v in LONG_MODELS:
+            vals = []
+            for lab in (v, f"{v}_cont", f"{v}_long"):
+                lg = pd.read_csv(run_dir / lab / f"seed{s}" / "log.csv")
+                vals.append(f"{lg.val_loss.min():.5f}")
+            parts.append(f"{v} " + " -> ".join(vals))
+        lines.append(f"  seed {s}: " + "   ".join(parts))
+    lines += ["", "A) Transient attenuation (dB) at equal speech quality, unseen types, STR -15 dB (per seed, then mean):"]
+    for v in LONG_MODELS:
+        for n in BUDGETS:
+            g = eq[(eq.model == v) & (eq.steps == n)].sort_values("seed")
+            lines.append(f"  {v} {n:5d} steps  " + "   ".join(
+                f"{c[-5:]}: " + " ".join(f"{x:5.2f}" for x in g[c]) + f" (mean {g[c].mean():5.2f})" for c in cols))
+    lines += ["", "B) Gaps at equal speech quality (first minus second), per seed then mean:"]
+    for a, b in (("H", "E"), ("H", "C")):
+        for n in BUDGETS:
+            ga = eq[(eq.model == a) & (eq.steps == n)].set_index("seed")[cols]
+            gb = eq[(eq.model == b) & (eq.steps == n)].set_index("seed")[cols]
+            dd = ga - gb
+            lines.append(f"  {a}-{b} {n:5d} steps  " + "   ".join(
+                f"{c[-5:]}: " + " ".join(f"{x:+5.2f}" for x in dd[c]) + f" (mean {dd[c].mean():+5.2f}, "
+                f"{int((dd[c] > 0).sum())}/{len(dd)} > 0)" for c in cols))
+    lines += ["", "C) As trained: paired difference over all 6 STRs, per seed then mean:"]
+    for (pair, cond, met), g in diffs.groupby(["pair", "cond", "metric"], sort=False):
+        for n in BUDGETS:
+            vals = g[g.steps == n].sort_values("seed")["diff"].to_numpy()
+            lines.append(f"  {pair} {n:5d} {cond:7s} {met:16s} " + " ".join(f"{x:+.4f}" for x in vals)
+                         + f"   mean {vals.mean():+.4f}   ({int((vals > 0).sum())}/{len(vals)} > 0)")
+    text = "\n".join(lines) + "\n"
+    (run_dir / "stage6_summary.txt").write_text(text)
+    _plot_learning_curve(eq, run_dir / "stage6_learning_curve.png")
+    return text
+
+
+def _label_line_ends(ax, ends, color, min_gap_frac: float = 0.06):
+    """Direct labels at the right end of each line, nudged apart so close lines never get overlapping labels."""
+    if not ends:
+        return
+    lo, hi = ax.get_ylim()
+    gap = (hi - lo) * min_gap_frac
+    ends = sorted(ends, key=lambda e: e[1])
+    ys = [e[1] for e in ends]
+    for i in range(1, len(ys)):
+        ys[i] = max(ys[i], ys[i - 1] + gap)
+    shift = max(0.0, ys[-1] - hi + gap / 2)
+    for (x, y, lab), yl in zip(ends, ys):
+        ax.annotate(lab, (x, y), xytext=(x * 1.08, yl - shift), textcoords="data", va="center", fontsize=9.5, color=color)
+
+
+def _plot_learning_curve(eq, out_path: Path, col: str = "ta_db_at_sp_0.975"):
+    """Left: transient removed at equal speech quality vs training steps, per model. Right: H's lead over E and C."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from money_plot import INK, INK_2, MUTED, STYLE, SURFACE, _style_axes
+    seeds = sorted(eq.seed.unique())
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(11.5, 4.6), facecolor=SURFACE, gridspec_kw=dict(wspace=0.32))
+    for ax in (a1, a2):
+        _style_axes(ax)
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(BUDGETS); ax.set_xticklabels([f"{n:,}" for n in BUDGETS])
+        ax.minorticks_off()
+        ax.set_xlim(BUDGETS[0] / 1.25, BUDGETS[-1] * 1.6)
+        ax.set_xlabel("Training steps (batch 16, log scale)", fontsize=10.5, color=INK)
+    names = {"H": "Proposed (H)", "E": "Size-matched LSTM (E)", "C": "Original RNN (C)"}
+    ends1, ends2 = [], []
+    for v in ("H", "E", "C"):
+        g = eq[eq.model == v]
+        col_v = STYLE[v]["color"]
+        for s in seeds:
+            gs = g[g.seed == s].sort_values("steps")
+            a1.plot(gs.steps, gs[col], color=col_v, lw=1.0, alpha=0.35, zorder=2)
+        m = g.groupby("steps")[col].mean()
+        if len(m):
+            a1.plot(m.index, m.values, color=col_v, lw=2.6, marker="o", ms=7, mec=SURFACE, mew=1.5, zorder=4, label=names[v])
+            ends1.append((m.index[-1], m.values[-1], names[v]))
+    a1.set_ylabel("Transient removed (dB) at speech preserved 0.975", fontsize=10.5, color=INK)
+    a1.set_title("Transient removed vs training length", loc="left", fontsize=11.5, color=INK, fontweight="bold")
+    gap_style = {"E": ("H − size-matched LSTM (E)", STYLE["E"]["color"]), "C": ("H − original RNN (C)", STYLE["C"]["color"])}
+    a2.axhline(0, color=MUTED, lw=1.0, zorder=1)
+    for b in ("E", "C"):
+        lab, c = gap_style[b]
+        piv = eq.pivot_table(index=["seed", "steps"], columns="model", values=col)
+        if "H" not in piv or b not in piv:
+            continue
+        gap = (piv["H"] - piv[b]).reset_index(name="gap")
+        for s in seeds:
+            gs = gap[gap.seed == s].sort_values("steps")
+            a2.plot(gs.steps, gs.gap, color=c, lw=1.0, alpha=0.35, zorder=2)
+        m = gap.groupby("steps").gap.mean()
+        a2.plot(m.index, m.values, color=c, lw=2.6, marker="o", ms=7, mec=SURFACE, mew=1.5, zorder=4, label=lab)
+        ends2.append((m.index[-1], m.values[-1], lab))
+    a2.set_ylabel("H's lead (dB) at speech preserved 0.975", fontsize=10.5, color=INK)
+    a2.set_title("The proposed model's lead vs training length", loc="left", fontsize=11.5, color=INK, fontweight="bold")
+    for ax, ends in ((a1, ends1), (a2, ends2)):
+        _label_line_ends(ax, ends, INK)
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=len(ends), frameon=False, fontsize=9,
+                  labelcolor=INK, handlelength=2.2)
+    fig.suptitle(f"Longer training · unseen transient types, STR −15 dB · thick = mean of {len(seeds)} seed"
+                 f"{'s' if len(seeds) > 1 else ''}, thin = each seed", x=0.065, ha="left", y=1.02, fontsize=10, color=INK_2)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4", "multiseed", "stage5", "summary5"])
+    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4", "multiseed", "stage5", "summary5", "stage6", "summary6"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--n", type=int, default=100, help="test sentences per (condition, STR) cell")
     ap.add_argument("--steps", type=int, default=2000)
@@ -708,6 +916,10 @@ if __name__ == "__main__":
         multiseed(n_per_cell=a.n, steps=a.steps, batch=a.batch)
     elif a.stage == "stage5":
         stage5(n_per_cell=a.n, steps=a.steps, batch=a.batch, smoke=a.smoke)
+    elif a.stage == "stage6":
+        stage6(n_per_cell=a.n, batch=a.batch, smoke=a.smoke)
+    elif a.stage == "summary6":
+        print(summarise_stage6(CFG.out_dir / ("smoke" if a.smoke else "stage1")))
     elif a.stage == "summary5":
         print(summarise_stage5(CFG.out_dir / ("smoke" if a.smoke else "stage1")))
     else:
