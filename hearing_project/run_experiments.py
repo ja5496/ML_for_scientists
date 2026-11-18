@@ -29,6 +29,7 @@ USAGE (IMPLEMENTED: stage 1, stage 3, stage 4 incl. scoring, paired statistics a
     python run_experiments.py stage3                  # memories + go/no-go (after dbn_pretrain.py)
     python run_experiments.py stage4                  # trains E F G H, scores all nine, money plot
     python run_experiments.py refresh4                # add F, G to the trade-off sweep; redo verdict + money plot
+    python run_experiments.py multiseed               # seeds 1-2 for C, E, G, H: do the stage-4 gaps survive retraining?
 Outputs in runs/stage1/ (shared experiment folder: recipes, feature stats, all trained models, tables, figures)
 
 PSEUDOCODE FOR LATER STAGES
@@ -390,9 +391,113 @@ def refresh_stage4(variants=("F", "G"), n_per_cell: int = 100):
         plot_stage1(summary, run_dir / name, variants=vs, title=title)
 
 
+def multiseed(seeds=(0, 1, 2), variants=("C", "E", "G", "H"), n_per_cell: int = 100, steps: int = 2000, batch: int = 16):
+    """Retrain the key models with more seeds (init AND data order change) and ask whether the stage-4 gaps survive.
+    Resumable: models are skipped if their checkpoint exists, and each seed's scores are cached in runs/stage1/multiseed/.
+    Seed 0 reuses the stage-4 results. Writes multiseed_summary.txt, multiseed_*.csv and multiseed_seeds.png."""
+    import pandas as pd
+    corpus = dm.load_corpus()
+    run_dir = tm.run_dir_for(corpus)
+    out = run_dir / "multiseed"; out.mkdir(exist_ok=True)
+    rows = select_test_rows(tm.get_recipes(corpus, run_dir), n_per_cell)
+    for seed in seeds:                                         # 1) train everything first (the slow, resumable part)
+        for v in variants:
+            if not (run_dir / v / f"seed{seed}" / "best.pkl").exists():
+                tm.train(v, corpus, n_steps=steps, batch_size=batch, seed=seed)
+    per_utt, trade = [], []
+    for seed in seeds:                                         # 2) score (cached per seed)
+        f_res, f_to = out / f"seed{seed}_results.csv", out / f"seed{seed}_tradeoff.csv"
+        if seed == 0 and not f_res.exists():
+            df0 = pd.read_csv(run_dir / "stage4_results_per_utterance.csv")
+            df0[df0.variant.isin(variants)].to_csv(f_res, index=False)
+            to0 = pd.read_csv(run_dir / "tradeoff_unseen_str-15.csv")
+            to0[to0.variant.isin(variants)].to_csv(f_to, index=False)
+        if not f_res.exists():
+            pd.DataFrame(evaluate(corpus, run_dir, rows, load_models(run_dir, variants, seed), variants=variants)).to_csv(f_res, index=False)
+        if not f_to.exists():
+            tradeoff(corpus, rows, load_models(run_dir, variants, seed), variants=variants).to_csv(f_to, index=False)
+        per_utt.append(pd.read_csv(f_res).assign(seed=seed))
+        trade.append(pd.read_csv(f_to).assign(seed=seed))
+    df, to = pd.concat(per_utt, ignore_index=True), pd.concat(trade, ignore_index=True)
+
+    # 3) per-seed paired differences (same mixtures), then mean ± SD over seeds
+    pairs = [("H", "E"), ("H", "C"), ("H", "G"), ("G", "E")]
+    key = ["cond", "str_db", "speech_idx"]
+    recs = []
+    for seed in seeds:
+        d = df[df.seed == seed]
+        for a, b in pairs:
+            x = d[d.variant == a].set_index(key).sort_index(); y = d[d.variant == b].set_index(key).sort_index()
+            for cond in ("seen", "unseen", "grandma"):
+                for m in ("stoi", "ta_db", "speech_preserved"):
+                    recs.append(dict(seed=seed, pair=f"{a}-{b}", cond=cond, metric=m,
+                                     diff=float((x.loc[cond, m] - y.loc[cond, m]).mean())))
+    diffs = pd.DataFrame(recs)
+    diffs.to_csv(run_dir / "multiseed_paired_diffs.csv", index=False)
+    eq = pd.concat([equal_quality_table(to[to.seed == s], levels=(0.985, 0.975, 0.965)).assign(seed=s) for s in seeds])
+    eq.to_csv(run_dir / "multiseed_equal_quality.csv", index=False)
+
+    # 4) seed-averaged predictions: average each mixture's score over seeds, then one paired test per pair
+    from scipy.stats import wilcoxon
+    avg = df.groupby(["variant"] + key)[["stoi", "ta_db", "speech_preserved"]].mean()
+    lines = [f"Multi-seed check: seeds {list(seeds)}, models {list(variants)}, {n_per_cell} sentences per cell.",
+             "", "A) Per-seed paired difference (first minus second, mean over the cell's mixtures); mean ± SD over seeds:"]
+    for (pair, cond, m), g in diffs.groupby(["pair", "cond", "metric"], sort=False):
+        vals = g.sort_values("seed")["diff"].to_numpy()
+        lines.append(f"  {pair} {cond:7s} {m:16s} " + "  ".join(f"{v:+.4f}" for v in vals)
+                     + f"   mean {vals.mean():+.4f} ± {vals.std(ddof=1) if len(vals) > 1 else 0:.4f}"
+                     + f"   ({int((vals > 0).sum())}/{len(vals)} seeds > 0)")
+    lines += ["", "B) Transient attenuation (dB) at equal speech quality, unseen types, STR -15 dB, per seed:"]
+    for v in variants:
+        g = eq[eq.variant == v].sort_values("seed")
+        cols = [c for c in eq.columns if c.startswith("ta_db_at")]
+        lines.append(f"  {v}  " + "   ".join(f"{c[-5:]}: " + " ".join(f"{x:5.2f}" for x in g[c]) + f" (mean {g[c].mean():5.2f})"
+                                          for c in cols))
+    lines += ["", "C) Seed-averaged models (each mixture's score averaged over seeds), paired Wilcoxon over mixtures:"]
+    for a, b in pairs:
+        for cond in ("seen", "unseen", "grandma"):
+            parts = []
+            for m in ("stoi", "ta_db", "speech_preserved"):
+                d = (avg.loc[a].loc[cond][m] - avg.loc[b].loc[cond][m]).to_numpy()
+                parts.append(f"{m} {d.mean():+.4f} ± {1.96 * d.std(ddof=1) / np.sqrt(len(d)):.4f} (p={wilcoxon(d).pvalue:.1e})")
+            lines.append(f"  {a}-{b} [{cond:7s}] " + "   ".join(parts))
+    text = "\n".join(lines) + "\n"
+    (run_dir / "multiseed_summary.txt").write_text(text)
+    print(text)
+    _plot_multiseed(eq, run_dir / "multiseed_seeds.png", variants)
+    return text
+
+
+def _plot_multiseed(eq, out_path: Path, variants):
+    """One dot per seed: transient removed at speech preserved 0.975 (unseen, -15 dB). Spread = seed noise."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from money_plot import ABLATION_STYLE, INK, INK_2, STYLE, SURFACE, _style_axes
+    style = {**STYLE, **ABLATION_STYLE}
+    col = "ta_db_at_sp_0.975"
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), facecolor=SURFACE)
+    _style_axes(ax)
+    for i, v in enumerate(variants):
+        g = eq[eq.variant == v][col].to_numpy()
+        ax.scatter(g, np.full(len(g), i), s=70, color=style[v]["color"], edgecolor=SURFACE, linewidth=1.5, zorder=3)
+        ax.plot([g.mean()] * 2, [i - 0.28, i + 0.28], color=INK, lw=2, zorder=4)
+    ax.set_yticks(range(len(variants)))
+    ax.set_yticklabels([style[v]["label"] if f"({v})" in style[v]["label"] else f"{style[v]['label']} ({v})"
+                        for v in variants], fontsize=9.5, color=INK)
+    ax.set_xlabel("Transient attenuation (dB) at speech preserved = 0.975   →  better", fontsize=10.5, color=INK)
+    ax.set_title("Does the ranking survive retraining?", loc="left", fontsize=12, color=INK, fontweight="bold", pad=26)
+    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Dot = one training seed; bar = mean over seeds.",
+            transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+    ax.set_ylim(-0.6, len(variants) - 0.4)
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4"])
+    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4", "multiseed"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--n", type=int, default=100, help="test sentences per (condition, STR) cell")
     ap.add_argument("--steps", type=int, default=2000)
@@ -405,5 +510,7 @@ if __name__ == "__main__":
         stage3(smoke=a.smoke)
     elif a.stage == "refresh4":
         refresh_stage4(n_per_cell=a.n)
+    elif a.stage == "multiseed":
+        multiseed(n_per_cell=a.n, steps=a.steps, batch=a.batch)
     else:
         stage4(n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain or a.smoke, smoke=a.smoke)
