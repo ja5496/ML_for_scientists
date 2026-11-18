@@ -1,8 +1,8 @@
-# Stage 5 results: end-to-end fine-tuning (INTERIM, seed 0 only)
+# Stage 5 results: end-to-end fine-tuning (INTERIM, seeds 0 and 1)
 
-> **Interim.** Only training seed 0 is finished. Seeds 1 and 2 are still running on CPU, and this file will be rewritten
-> when they finish. One seed is not enough to call any of the differences below; stage 4 showed that a single seed can
-> mislead by about 0.5 dB.
+> **Interim.** Training seeds 0 and 1 are finished; seed 2 is still running on CPU, and this file will be rewritten
+> when it finishes. Two seeds are not enough to call small differences; stage 4 showed that a single seed can mislead
+> by about 0.5 dB.
 
 ## The question
 
@@ -24,35 +24,39 @@ All three see the same new training crops, in the same order (data seed + 100, s
 Learning rates: 1e-4 for the mask network and attention, 1e-5 for the belief network.
 Each run keeps the checkpoint with the lowest validation error, including the starting point.
 
-## Seed 0
+## Seeds 0 and 1
 
-Transient removed **at equal speech quality** (unseen transient types, STR −15 dB):
+Transient removed **at equal speech quality** (unseen transient types, STR −15 dB). Each cell is the mean of the two
+seeds; the per-seed values are in brackets.
 
 | speech preserved → | 0.985 (gentle) | 0.975 | 0.965 (harsh) |
 |---|---|---|---|
-| E, 2,000 steps (stage 4) | 8.7 dB | 11.7 | 14.1 |
-| H, 2,000 steps (stage 4) | 9.2 | 12.3 | 15.0 |
-| E_cont, +2,000 steps | 9.6 | 13.0 | 15.9 |
-| H_ft, +2,000 steps, belief network fine-tuned | 9.8 | 13.3 | 16.2 |
-| **H_cont**, +2,000 steps, belief network frozen | **10.0** | **13.5** | **16.5** |
-| **H_ft − H_cont** (effect of fine-tuning) | −0.1 | −0.2 | −0.3 |
-| **H_cont − E_cont** (H's lead, after more training) | +0.4 | +0.6 | +0.7 |
-| H − E in stage 4, same seed, for comparison | +0.4 | +0.6 | +0.9 |
-| E_cont − E (effect of the extra steps alone) | +0.9 | +1.3 | +1.7 |
+| E, 2,000 steps (stage 4) | 8.6 dB | 11.6 | 14.1 |
+| H, 2,000 steps (stage 4) | 9.2 | 12.4 | 15.1 |
+| E_cont, +2,000 steps | 9.2 | 12.5 | 15.2 |
+| H_ft, +2,000 steps, belief network fine-tuned | 9.8 | 13.2 | 16.2 |
+| **H_cont**, +2,000 steps, belief network frozen | **9.9** | **13.4** | **16.4** |
+| **H_ft − H_cont** (effect of fine-tuning) | −0.14 [−0.14, −0.13] | −0.21 [−0.22, −0.19] | −0.29 [−0.30, −0.28] |
+| **H_cont − E_cont** (H's lead, after more training) | +0.65 [+0.36, +0.95] | +0.97 [+0.54, +1.41] | +1.24 [+0.68, +1.80] |
+| H − E in stage 4, same two seeds, for comparison | +0.59 [+0.42, +0.76] | +0.79 [+0.61, +0.96] | +1.00 [+0.85, +1.15] |
+| E_cont − E (effect of the extra steps alone) | +0.60 [+0.87, +0.33] | +0.85 [+1.30, +0.41] | +1.07 [+1.72, +0.42] |
+| H_cont − H (effect of the extra steps alone) | +0.66 [+0.81, +0.52] | +1.04 [+1.23, +0.85] | +1.31 [+1.55, +1.08] |
 
-What seed 0 suggests (not yet established):
+What two seeds suggest (seed 2 still to come):
 
-1. **Fine-tuning the belief network did not help.** H_ft is slightly *behind* H_cont at every quality setting
-   (−0.1 to −0.3 dB). As trained, H_ft is the gentler model: it removes 0.6–0.8 dB less transient and keeps slightly more
-   speech (+0.002 speech preserved) in all three test conditions.
-   - Its validation error was the lowest of the three (0.0184 vs 0.0186 for H_cont), so the training objective and the
-     test trade-off disagree here.
-   - The attention settings barely moved: α 0.700 → 0.703, β −0.100 → −0.099, T 0.050 → 0.053.
-2. **H's lead over the size-matched LSTM survives more training**, almost unchanged: +0.4 / +0.6 / +0.7 dB, against
-   +0.4 / +0.6 / +0.9 dB at stage 4 on the same seed.
-3. **Every model is still undertrained.** The extra 2,000 steps alone gain +0.9 to +1.7 dB (E) and +0.8 to +1.6 dB (H).
-   That is about twice H's architectural lead. Longer training is the cheapest improvement available, and all
-   comparisons so far are at a short budget.
+1. **Fine-tuning the belief network did not help.** At equal speech quality, H_ft is slightly *behind* H_cont on both
+   seeds and at every setting (−0.13 to −0.30 dB), and the two seeds agree closely.
+   - As trained, the two seeds sit at different operating points: on seed 0 H_ft is gentler than H_cont (0.6–0.8 dB less
+     transient removed, +0.002 speech preserved); on seed 1 it is slightly harsher (+0.1 to +0.3 dB, −0.001 speech
+     preserved). The equal-quality comparison removes that difference, and there H_ft is behind on both.
+   - Its validation error matched H_cont's (seed 0: 0.0184 vs 0.0186; seed 1: 0.0188 vs 0.0187), so the training
+     objective does not separate them either.
+   - The attention settings barely moved: α 0.700 → 0.703, β −0.100 → −0.099 / −0.096, T 0.050 → 0.053 / 0.052.
+2. **H's lead over the size-matched LSTM survives more training** and, on these two seeds, grows slightly: +0.65 / +0.97 /
+   +1.24 dB, against +0.59 / +0.79 / +1.00 dB at stage 4. It is positive on both seeds at every setting.
+3. **The models are still undertrained.** The extra 2,000 steps gain about +0.6 to +1.3 dB on average, comparable to H's
+   lead from its design. For E the gain varies a lot between seeds (+0.9 to +1.7 dB on seed 0, only +0.3 to +0.4 dB on
+   seed 1); for H it is steadier (+0.5 to +1.6 dB). All comparisons so far are at a short training budget.
 
 ## Files
 
@@ -61,9 +65,9 @@ What seed 0 suggests (not yet established):
 - `stage5_frontier.png`: transient removed vs speech preserved for all five models.
 - `stage5_seeds.png`: one marker per seed at speech preserved 0.975.
 - `stage5_paired_diffs.csv`, `stage5_equal_quality.csv`.
-- `seed0_results.csv` (per mixture), `seed0_tradeoff.csv`: scores for H_ft, H_cont and E_cont.
+- `seed{0,1}_results.csv` (per mixture), `seed{0,1}_tradeoff.csv`: scores for H_ft, H_cont and E_cont.
   The stage-4 models' scores are in `../stage4/`.
-- `weights/{H_ft,H_cont,E_cont}/seed0/`: `best.pkl` (load with `model_variants.Trained.load`) and `log.csv` (training curve).
+- `weights/{H_ft,H_cont,E_cont}/seed{0,1}/`: `best.pkl` (load with `model_variants.Trained.load`) and `log.csv` (training curve).
   H_ft's checkpoint includes its fine-tuned belief network and attention settings. H_cont still needs the frozen belief
   network in `../stage2_3/dbn/`.
 - `stage5_log.txt`: the run log.

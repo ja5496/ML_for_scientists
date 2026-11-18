@@ -165,3 +165,169 @@ C) Seed-averaged models, paired Wilcoxon over mixtures (test-set noise only, not
 
 [H_ft] from H/seed1  trainable=748,652 (belief network 425,392)  steps=2000 batch=16 lr_net=0.0001 lr_dbn=1e-05 -> /home/user/ML_for_scientists/hearing_project/runs/stage1/H_ft/seed1
   step     0  val 0.0212  (starting checkpoint)
+  step   100  train 0.0178  val 0.0202  *  (2.4 min)  alpha 0.700 beta -0.100 T 0.050
+  step   200  train 0.0169  val 0.0203  (4.7 min)  alpha 0.701 beta -0.101 T 0.050
+  step   300  train 0.0171  val 0.0198  *  (7.0 min)  alpha 0.701 beta -0.101 T 0.050
+  step   400  train 0.0166  val 0.0199  (9.3 min)  alpha 0.701 beta -0.100 T 0.051
+  step   500  train 0.0170  val 0.0199  (11.5 min)  alpha 0.701 beta -0.100 T 0.051
+  step   600  train 0.0166  val 0.0200  (13.7 min)  alpha 0.702 beta -0.098 T 0.051
+  step   700  train 0.0170  val 0.0195  *  (15.9 min)  alpha 0.702 beta -0.098 T 0.051
+  step   800  train 0.0167  val 0.0192  *  (18.1 min)  alpha 0.702 beta -0.097 T 0.051
+  step   900  train 0.0162  val 0.0192  (20.3 min)  alpha 0.702 beta -0.097 T 0.051
+  step  1000  train 0.0162  val 0.0192  (22.5 min)  alpha 0.703 beta -0.098 T 0.051
+  step  1100  train 0.0165  val 0.0193  (24.7 min)  alpha 0.703 beta -0.097 T 0.052
+  step  1200  train 0.0162  val 0.0190  *  (26.9 min)  alpha 0.703 beta -0.096 T 0.052
+  step  1300  train 0.0164  val 0.0189  *  (29.1 min)  alpha 0.703 beta -0.096 T 0.052
+  step  1400  train 0.0161  val 0.0188  *  (31.3 min)  alpha 0.703 beta -0.096 T 0.052
+  step  1500  train 0.0165  val 0.0190  (33.5 min)  alpha 0.703 beta -0.095 T 0.052
+  step  1600  train 0.0161  val 0.0188  (35.7 min)  alpha 0.703 beta -0.095 T 0.052
+  step  1700  train 0.0160  val 0.0191  (37.9 min)  alpha 0.703 beta -0.095 T 0.052
+  step  1800  train 0.0164  val 0.0190  (40.1 min)  alpha 0.703 beta -0.094 T 0.052
+  step  1900  train 0.0156  val 0.0188  (42.3 min)  alpha 0.703 beta -0.094 T 0.053
+  step  2000  train 0.0164  val 0.0190  (44.5 min)  alpha 0.704 beta -0.094 T 0.053
+[H_cont] from H/seed1  trainable=323,257 (belief network 0)  steps=2000 batch=16 lr_net=0.0001 lr_dbn=- -> /home/user/ML_for_scientists/hearing_project/runs/stage1/H_cont/seed1
+  step     0  val 0.0212  (starting checkpoint)
+  step   100  train 0.0178  val 0.0202  *  (1.8 min)
+  step   200  train 0.0169  val 0.0205  (3.5 min)
+  step   300  train 0.0172  val 0.0202  *  (5.3 min)
+  step   400  train 0.0167  val 0.0198  *  (7.0 min)
+  step   500  train 0.0170  val 0.0200  (8.7 min)
+  step   600  train 0.0166  val 0.0199  (10.5 min)
+  step   700  train 0.0170  val 0.0194  *  (12.2 min)
+  step   800  train 0.0167  val 0.0194  *  (14.0 min)
+  step   900  train 0.0163  val 0.0193  *  (15.8 min)
+  step  1000  train 0.0164  val 0.0192  *  (17.6 min)
+  step  1100  train 0.0165  val 0.0192  *  (19.4 min)
+  step  1200  train 0.0163  val 0.0190  *  (21.1 min)
+  step  1300  train 0.0166  val 0.0192  (22.9 min)
+  step  1400  train 0.0161  val 0.0189  *  (24.5 min)
+  step  1500  train 0.0166  val 0.0188  *  (26.2 min)
+  step  1600  train 0.0162  val 0.0188  *  (28.0 min)
+  step  1700  train 0.0160  val 0.0187  *  (29.7 min)
+  step  1800  train 0.0165  val 0.0193  (31.4 min)
+  step  1900  train 0.0158  val 0.0190  (33.1 min)
+  step  2000  train 0.0165  val 0.0189  (34.9 min)
+[E_cont] from E/seed1  trainable=745,480 (belief network 0)  steps=2000 batch=16 lr_net=0.0001 lr_dbn=- -> /home/user/ML_for_scientists/hearing_project/runs/stage1/E_cont/seed1
+  step     0  val 0.0229  (starting checkpoint)
+  step   100  train 0.0206  val 0.0224  *  (2.0 min)
+  step   200  train 0.0197  val 0.0224  *  (3.9 min)
+  step   300  train 0.0199  val 0.0221  *  (5.9 min)
+  step   400  train 0.0195  val 0.0222  (7.9 min)
+  step   500  train 0.0198  val 0.0222  (9.8 min)
+  step   600  train 0.0197  val 0.0220  *  (11.8 min)
+  step   700  train 0.0200  val 0.0220  *  (13.8 min)
+  step   800  train 0.0193  val 0.0213  *  (15.8 min)
+  step   900  train 0.0188  val 0.0214  (17.8 min)
+  step  1000  train 0.0190  val 0.0212  *  (19.8 min)
+  step  1100  train 0.0190  val 0.0213  (21.7 min)
+  step  1200  train 0.0186  val 0.0216  (23.6 min)
+  step  1300  train 0.0193  val 0.0209  *  (25.5 min)
+  step  1400  train 0.0189  val 0.0209  *  (27.4 min)
+  step  1500  train 0.0191  val 0.0208  *  (29.4 min)
+  step  1600  train 0.0186  val 0.0207  *  (31.3 min)
+  step  1700  train 0.0183  val 0.0208  (33.3 min)
+  step  1800  train 0.0191  val 0.0207  (35.2 min)
+  step  1900  train 0.0183  val 0.0207  (37.1 min)
+  step  2000  train 0.0190  val 0.0207  (39.1 min)
+  scoring H_ft (H_ft) on 1800 mixtures ...
+  scoring H_cont (H_cont) on 1800 mixtures ...
+  scoring E_cont (E_cont) on 1800 mixtures ...
+  tradeoff H_ft p=0.5: TA 7.2 dB, speech preserved 0.991
+  tradeoff H_ft p=0.75: TA 10.1 dB, speech preserved 0.984
+  tradeoff H_ft p=1.0: TA 12.4 dB, speech preserved 0.978
+  tradeoff H_ft p=1.5: TA 15.8 dB, speech preserved 0.966
+  tradeoff H_ft p=2.0: TA 18.1 dB, speech preserved 0.957
+  tradeoff H_ft p=3.0: TA 21.2 dB, speech preserved 0.942
+  tradeoff H_cont p=0.5: TA 7.2 dB, speech preserved 0.991
+  tradeoff H_cont p=0.75: TA 10.0 dB, speech preserved 0.984
+  tradeoff H_cont p=1.0: TA 12.4 dB, speech preserved 0.978
+  tradeoff H_cont p=1.5: TA 15.8 dB, speech preserved 0.967
+  tradeoff H_cont p=2.0: TA 18.1 dB, speech preserved 0.958
+  tradeoff H_cont p=3.0: TA 21.3 dB, speech preserved 0.943
+  tradeoff E_cont p=0.5: TA 5.9 dB, speech preserved 0.993
+  tradeoff E_cont p=0.75: TA 8.2 dB, speech preserved 0.987
+  tradeoff E_cont p=1.0: TA 10.3 dB, speech preserved 0.981
+  tradeoff E_cont p=1.5: TA 13.4 dB, speech preserved 0.970
+  tradeoff E_cont p=2.0: TA 15.6 dB, speech preserved 0.960
+  tradeoff E_cont p=3.0: TA 18.7 dB, speech preserved 0.945
+Stage 5 (end-to-end fine-tuning), seeds [0, 1]. H_ft, H_cont, E_cont = +2,000 steps on new data from the
+stage-4 checkpoints (H_ft: belief network + attention unfrozen; H_cont / E_cont: frozen controls).
+
+Validation mask error (MSE): start -> best, and the attention settings H_ft learned:
+  seed 0: H_ft 0.02049 -> 0.01841 (step 1600)   H_cont 0.02049 -> 0.01857 (step 2000)   E_cont 0.02095 -> 0.01895 (step 2000)   alpha 0.703 beta -0.099 T 0.0527 (start 0.700 / -0.100 / 0.0500)
+  seed 1: H_ft 0.02118 -> 0.01878 (step 1400)   H_cont 0.02118 -> 0.01874 (step 1700)   E_cont 0.02289 -> 0.02067 (step 1600)   alpha 0.703 beta -0.096 T 0.0518 (start 0.700 / -0.100 / 0.0500)
+
+A) Per-seed paired difference (first minus second); mean ± SD over seeds:
+  H_ft-H_cont    seen    stoi             -0.0005  -0.0001   mean -0.0003 ± 0.0003   (0/2 seeds > 0)
+  H_ft-H_cont    seen    ta_db            -0.6477  +0.2860   mean -0.1809 ± 0.6602   (1/2 seeds > 0)
+  H_ft-H_cont    seen    speech_preserved +0.0020  -0.0013   mean +0.0004 ± 0.0024   (1/2 seeds > 0)
+  H_ft-H_cont    unseen  stoi             -0.0009  -0.0004   mean -0.0006 ± 0.0004   (0/2 seeds > 0)
+  H_ft-H_cont    unseen  ta_db            -0.8341  +0.1369   mean -0.3486 ± 0.6866   (1/2 seeds > 0)
+  H_ft-H_cont    unseen  speech_preserved +0.0026  -0.0011   mean +0.0007 ± 0.0026   (1/2 seeds > 0)
+  H_ft-H_cont    grandma stoi             -0.0005  -0.0003   mean -0.0004 ± 0.0001   (0/2 seeds > 0)
+  H_ft-H_cont    grandma ta_db            -0.6219  +0.2164   mean -0.2027 ± 0.5928   (1/2 seeds > 0)
+  H_ft-H_cont    grandma speech_preserved +0.0022  -0.0016   mean +0.0003 ± 0.0027   (1/2 seeds > 0)
+  H_cont-H       seen    stoi             +0.0034  +0.0027   mean +0.0031 ± 0.0005   (2/2 seeds > 0)
+  H_cont-H       seen    ta_db            +2.1975  +1.6089   mean +1.9032 ± 0.4162   (2/2 seeds > 0)
+  H_cont-H       seen    speech_preserved -0.0044  -0.0031   mean -0.0038 ± 0.0010   (0/2 seeds > 0)
+  H_cont-H       unseen  stoi             +0.0036  +0.0030   mean +0.0033 ± 0.0004   (2/2 seeds > 0)
+  H_cont-H       unseen  ta_db            +2.3825  +1.3529   mean +1.8677 ± 0.7280   (2/2 seeds > 0)
+  H_cont-H       unseen  speech_preserved -0.0048  -0.0027   mean -0.0037 ± 0.0015   (0/2 seeds > 0)
+  H_cont-H       grandma stoi             +0.0039  +0.0034   mean +0.0036 ± 0.0003   (2/2 seeds > 0)
+  H_cont-H       grandma ta_db            +2.3771  +1.5610   mean +1.9690 ± 0.5770   (2/2 seeds > 0)
+  H_cont-H       grandma speech_preserved -0.0061  -0.0036   mean -0.0049 ± 0.0017   (0/2 seeds > 0)
+  H_ft-E_cont    seen    stoi             +0.0013  +0.0034   mean +0.0023 ± 0.0015   (2/2 seeds > 0)
+  H_ft-E_cont    seen    ta_db            +0.0718  +1.8448   mean +0.9583 ± 1.2537   (2/2 seeds > 0)
+  H_ft-E_cont    seen    speech_preserved +0.0009  -0.0039   mean -0.0015 ± 0.0034   (1/2 seeds > 0)
+  H_ft-E_cont    unseen  stoi             +0.0024  +0.0039   mean +0.0032 ± 0.0011   (2/2 seeds > 0)
+  H_ft-E_cont    unseen  ta_db            +0.1532  +2.1842   mean +1.1687 ± 1.4361   (2/2 seeds > 0)
+  H_ft-E_cont    unseen  speech_preserved +0.0015  -0.0047   mean -0.0016 ± 0.0044   (1/2 seeds > 0)
+  H_ft-E_cont    grandma stoi             +0.0025  +0.0036   mean +0.0030 ± 0.0008   (2/2 seeds > 0)
+  H_ft-E_cont    grandma ta_db            +0.5041  +1.5910   mean +1.0476 ± 0.7685   (2/2 seeds > 0)
+  H_ft-E_cont    grandma speech_preserved -0.0002  -0.0045   mean -0.0023 ± 0.0030   (0/2 seeds > 0)
+  H_cont-E_cont  seen    stoi             +0.0018  +0.0035   mean +0.0026 ± 0.0012   (2/2 seeds > 0)
+  H_cont-E_cont  seen    ta_db            +0.7195  +1.5588   mean +1.1392 ± 0.5935   (2/2 seeds > 0)
+  H_cont-E_cont  seen    speech_preserved -0.0011  -0.0026   mean -0.0019 ± 0.0010   (0/2 seeds > 0)
+  H_cont-E_cont  unseen  stoi             +0.0033  +0.0043   mean +0.0038 ± 0.0007   (2/2 seeds > 0)
+  H_cont-E_cont  unseen  ta_db            +0.9874  +2.0474   mean +1.5174 ± 0.7495   (2/2 seeds > 0)
+  H_cont-E_cont  unseen  speech_preserved -0.0010  -0.0036   mean -0.0023 ± 0.0018   (0/2 seeds > 0)
+  H_cont-E_cont  grandma stoi             +0.0029  +0.0039   mean +0.0034 ± 0.0007   (2/2 seeds > 0)
+  H_cont-E_cont  grandma ta_db            +1.1260  +1.3746   mean +1.2503 ± 0.1758   (2/2 seeds > 0)
+  H_cont-E_cont  grandma speech_preserved -0.0024  -0.0029   mean -0.0026 ± 0.0003   (0/2 seeds > 0)
+  E_cont-E       seen    stoi             +0.0028  +0.0021   mean +0.0025 ± 0.0005   (2/2 seeds > 0)
+  E_cont-E       seen    ta_db            +1.7347  +0.7264   mean +1.2305 ± 0.7130   (2/2 seeds > 0)
+  E_cont-E       seen    speech_preserved -0.0030  -0.0006   mean -0.0018 ± 0.0017   (0/2 seeds > 0)
+  E_cont-E       unseen  stoi             +0.0029  +0.0021   mean +0.0025 ± 0.0006   (2/2 seeds > 0)
+  E_cont-E       unseen  ta_db            +2.0899  +0.6581   mean +1.3740 ± 1.0125   (2/2 seeds > 0)
+  E_cont-E       unseen  speech_preserved -0.0043  -0.0011   mean -0.0027 ± 0.0023   (0/2 seeds > 0)
+  E_cont-E       grandma stoi             +0.0025  +0.0031   mean +0.0028 ± 0.0004   (2/2 seeds > 0)
+  E_cont-E       grandma ta_db            +1.4168  +0.9768   mean +1.1968 ± 0.3111   (2/2 seeds > 0)
+  E_cont-E       grandma speech_preserved -0.0036  -0.0016   mean -0.0026 ± 0.0014   (0/2 seeds > 0)
+
+B) Transient attenuation (dB) at equal speech quality, unseen types, STR -15 dB, per seed:
+  C       0.985:  7.90  8.37 (mean  8.13)   0.975: 10.11 10.86 (mean 10.48)   0.965: 11.85 12.82 (mean 12.34)
+  E       0.985:  8.73  8.55 (mean  8.64)   0.975: 11.66 11.54 (mean 11.60)   0.965: 14.13 14.11 (mean 14.12)
+  E_cont  0.985:  9.60  8.88 (mean  9.24)   0.975: 12.95 11.95 (mean 12.45)   0.965: 15.85 14.53 (mean 15.19)
+  H       0.985:  9.15  9.31 (mean  9.23)   0.975: 12.27 12.50 (mean 12.39)   0.965: 14.98 15.26 (mean 15.12)
+  H_cont  0.985:  9.96  9.83 (mean  9.89)   0.975: 13.50 13.36 (mean 13.43)   0.965: 16.53 16.34 (mean 16.43)
+  H_ft    0.985:  9.82  9.69 (mean  9.76)   0.975: 13.27 13.17 (mean 13.22)   0.965: 16.23 16.06 (mean 16.15)
+
+C) Seed-averaged models, paired Wilcoxon over mixtures (test-set noise only, not training noise):
+  H_ft-H_cont [seen   ] stoi -0.0003 ± 0.0002 (p=2.8e-08)   ta_db -0.1809 ± 0.0442 (p=2.3e-19)   speech_preserved +0.0004 ± 0.0002 (p=3.4e-03)
+  H_ft-H_cont [unseen ] stoi -0.0006 ± 0.0002 (p=2.4e-13)   ta_db -0.3486 ± 0.0480 (p=1.6e-47)   speech_preserved +0.0007 ± 0.0002 (p=7.4e-15)
+  H_ft-H_cont [grandma] stoi -0.0004 ± 0.0002 (p=1.6e-08)   ta_db -0.2027 ± 0.0387 (p=2.8e-28)   speech_preserved +0.0003 ± 0.0002 (p=1.2e-04)
+  H_cont-H [seen   ] stoi +0.0031 ± 0.0004 (p=1.7e-47)   ta_db +1.9032 ± 0.1281 (p=2.3e-94)   speech_preserved -0.0038 ± 0.0005 (p=4.0e-72)
+  H_cont-H [unseen ] stoi +0.0033 ± 0.0004 (p=5.8e-53)   ta_db +1.8677 ± 0.1171 (p=3.9e-94)   speech_preserved -0.0037 ± 0.0005 (p=4.9e-64)
+  H_cont-H [grandma] stoi +0.0036 ± 0.0004 (p=6.3e-53)   ta_db +1.9690 ± 0.1247 (p=1.4e-96)   speech_preserved -0.0049 ± 0.0005 (p=3.3e-80)
+  H_ft-E_cont [seen   ] stoi +0.0023 ± 0.0005 (p=1.2e-20)   ta_db +0.9583 ± 0.1532 (p=6.9e-33)   speech_preserved -0.0015 ± 0.0006 (p=2.2e-10)
+  H_ft-E_cont [unseen ] stoi +0.0032 ± 0.0006 (p=3.7e-22)   ta_db +1.1687 ± 0.1555 (p=2.1e-44)   speech_preserved -0.0016 ± 0.0006 (p=4.1e-12)
+  H_ft-E_cont [grandma] stoi +0.0030 ± 0.0005 (p=6.9e-33)   ta_db +1.0476 ± 0.1299 (p=3.4e-48)   speech_preserved -0.0023 ± 0.0005 (p=1.4e-26)
+  H_cont-E_cont [seen   ] stoi +0.0026 ± 0.0005 (p=4.4e-25)   ta_db +1.1392 ± 0.1634 (p=6.4e-41)   speech_preserved -0.0019 ± 0.0006 (p=5.0e-12)
+  H_cont-E_cont [unseen ] stoi +0.0038 ± 0.0006 (p=1.5e-29)   ta_db +1.5174 ± 0.1587 (p=2.1e-62)   speech_preserved -0.0023 ± 0.0006 (p=1.1e-18)
+  H_cont-E_cont [grandma] stoi +0.0034 ± 0.0005 (p=4.8e-38)   ta_db +1.2503 ± 0.1354 (p=3.0e-57)   speech_preserved -0.0026 ± 0.0006 (p=6.0e-28)
+  E_cont-E [seen   ] stoi +0.0025 ± 0.0004 (p=1.5e-42)   ta_db +1.2305 ± 0.1176 (p=1.1e-63)   speech_preserved -0.0018 ± 0.0004 (p=2.3e-13)
+  E_cont-E [unseen ] stoi +0.0025 ± 0.0004 (p=1.1e-38)   ta_db +1.3740 ± 0.1143 (p=3.8e-73)   speech_preserved -0.0027 ± 0.0005 (p=8.6e-31)
+  E_cont-E [grandma] stoi +0.0028 ± 0.0004 (p=4.4e-50)   ta_db +1.1968 ± 0.1086 (p=9.6e-67)   speech_preserved -0.0026 ± 0.0004 (p=4.8e-30)
+
+[H_ft] from H/seed2  trainable=748,652 (belief network 425,392)  steps=2000 batch=16 lr_net=0.0001 lr_dbn=1e-05 -> /home/user/ML_for_scientists/hearing_project/runs/stage1/H_ft/seed2
+  step     0  val 0.0197  (starting checkpoint)

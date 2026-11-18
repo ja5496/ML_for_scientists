@@ -43,7 +43,7 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **run; weights + diagnostics in `results/stage2_3/`** |
 | Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
 | Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run, plus 3 training seeds for C/E/G/H; results in `results/stage4/`** |
-| Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **seed 0 done** (interim: fine-tuning did not help; H's lead over E survives more training); seeds 1–2 running. See `results/stage5/` |
+| Stage 5: end-to-end fine-tuning of H (belief network + attention unfrozen) with frozen controls H_cont, E_cont | **seeds 0–1 done** (interim: fine-tuning did not help on either seed; H's lead over E survives more training); seed 2 running. See `results/stage5/` |
 | Audible demo: H vs C on four held-out test sentences (`make_demo.py` → `results/demo/`) | **done** |
 | Streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
