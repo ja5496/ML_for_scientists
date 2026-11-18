@@ -232,8 +232,10 @@ Full numbers and caveats: `results/stage2_3/README.md`, `results/stage4/README.m
   (gentle → harsh; smallest single-seed gain +0.4 dB), and +0.002–0.004 STOI with speech preserved unchanged.
 - **Both new parts contribute.** The belief-network features alone (G) beat E by +0.2 to +0.9 dB on average and never fall below E on any seed. Attention adds
   ~0.45 dB on average but not on every seed (−0.15 to +1.1 dB). As trained, it reliably makes the model gentler.
-- **Crinkling (the grandmother's complaint)** is already the easiest category (C, E, G and H all remove 10–19 dB).
-  H vs C there is not significant (+0.3 dB); the clear gains are on unseen *impact* sounds (knock, slam, thud, hammer, cutlery).
+- **Crinkling (the grandmother's complaint): H and C tie** (mean +0.3 dB, median −0.3 dB, H ahead on 46% of mixtures);
+  H's only consistent edge there is STOI (+0.003–0.006). Crinkling gets the most dB removed (~15 dB) but is not solved:
+  at STR −15 dB the crinkle's peak is still about as loud as the speech after processing. The clear gains are on
+  unseen *impact* sounds (knock, slam, thud, hammer, cutlery).
 
 Next, in order of value per CPU-hour:
 1. ~~Seeds 1–2 for C, E, G, H~~ done (2026-11-18): H > E and H > C hold on every seed.

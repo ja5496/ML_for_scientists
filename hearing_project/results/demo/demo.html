@@ -103,6 +103,11 @@ summary { cursor: pointer; color: var(--ink); font-weight: 500; }
       <li>By rule, from the 1,800 scored test mixtures, before listening. All at STR −15 dB, the hardest level used in training.</li>
       <li><b>Typical</b> = the sentence whose extra transient removal (H minus C) is the median for that kind of sound.
         <b>Best</b> and <b>worst</b> = the largest and smallest H-minus-C gain.</li>
+      <li>Two of the four are crinkling only because H's worst case happened to be a crinkle. The best and worst cases
+        are the tails, not the norm: over all 600 crinkling test mixtures on each of 3 training seeds, H and C remove the
+        same amount on average (H removes more on 46% of them). H's gains are on impact sounds it never heard.</li>
+      <li>At STR −15 dB the crinkle's loudest part is still about as loud as the speech after either model, so it stays
+        clearly audible. At gentler levels both leave less behind.</li>
       <li>Every talker, sentence and transient here was held out of training. Crinkling sounds and the impact-sound categories were never heard at all.</li>
       <li>Models from training seed 1, the median seed for both C and H (seed 0 was C's weakest, which would flatter H).</li>
       <li><b>Transient removed</b>: how much quieter the transient got (dB). <b>Speech preserved</b>: STOI of the speech

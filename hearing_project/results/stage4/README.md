@@ -87,10 +87,16 @@ Seed 0 at equal speech quality (unseen, −15 dB; speech preserved 0.985 / 0.975
      −0.15 to +1.1 dB; seed 1 ties or slightly loses at the harsher settings.
    - **What attention reliably does, as trained, is make the model gentler.** On all 3 seeds it removes 0.8–1.2 dB less
      transient and keeps more speech (+0.004–0.005 speech preserved).
-5. **Grandma's crinkling is still the easiest category, and the gain over the original RNN there is not significant.**
-   C, E, G and H all remove 10–19 dB of it.
-   - H vs C on crinkling: +0.3 dB (Wilcoxon p = 0.6) and +0.004 STOI.
+5. **On grandma's crinkling, H and C tie, and crinkling is far from solved.**
+   - Transient removal, H minus C, over all crinkling mixtures and seeds: mean +0.3 dB (Wilcoxon p = 0.6), median
+     −0.3 dB. H removes more on only 46% of them. At STR −15 dB the average is slightly negative on every seed
+     (−0.25 to −0.36 dB). On single sentences either model can win by several dB (10th / 90th percentile −4 / +5.5 dB).
+   - H's only consistent edge on crinkling is intelligibility: STOI +0.003 to +0.006 and slightly more speech kept, on every seed.
    - H vs E on crinkling: +0.5 dB, positive on all 3 seeds.
+   - Crinkling gets the most dB removed of the three test conditions (C 14.5 dB, H 14.9 dB on average, vs 9.6 and
+     11.9 dB on unseen types). Earlier versions of this file called it "the easiest category", which overstated it:
+     the crinkle is still clearly audible after processing. At STR −15 dB, after C or H, the crinkle's loudest part is
+     still about 1.5 dB louder than the speech; the ideal mask would leave it about 4 dB below the speech.
 
    The clear gains are on impact sounds the model has never heard (knocks, slams, thuds).
 6. **Plenty of headroom remains.** The ideal mask removes 22 dB at STOI 0.980; the proposed model reaches 12.9 dB and 0.929 (seed 0).

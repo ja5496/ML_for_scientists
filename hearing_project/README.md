@@ -109,8 +109,11 @@ implementing agent, with stubs that raise `NotImplementedError`.
   - Removing the filterbank (F) makes the model *worse than the original RNN*, so the ear → cortex design is right.
   - The belief-network features alone (G) beat E by +0.2 to +0.9 dB.
   - The attention gate adds ~0.45 dB on average at equal speech quality, but not on every seed.
-- **Crinkling** (grandma's complaint) is already the easiest category (C, E, G and H all remove 10–19 dB).
-  The gain over the original RNN there is not significant; the new model's gains are on unseen impact sounds.
+- **Crinkling** (grandma's complaint): H and C tie on transient removal (mean +0.3 dB, median −0.3 dB; H removes
+  more on 46% of crinkling test mixtures). H's only consistent edge there is slightly better intelligibility (STOI
+  +0.003–0.006). Crinkling gets the most dB removed of any test condition (~15 dB), but it is far from solved: at
+  STR −15 dB the crinkle's loudest part is still about as loud as the speech after either model. The new model's
+  gains are on unseen impact sounds.
 - Still far from the ideal mask (22 dB, STOI 0.980). Details and caveats: [`results/stage4/README.md`](results/stage4/README.md);
   next steps: `PLAN.md` §9.
 
