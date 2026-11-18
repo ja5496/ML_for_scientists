@@ -28,6 +28,7 @@ USAGE (IMPLEMENTED: stage 1, stage 3, stage 4 incl. scoring, paired statistics a
     python run_experiments.py stage1 --n 300          # all 300 test sentences per cell (slower)
     python run_experiments.py stage3                  # memories + go/no-go (after dbn_pretrain.py)
     python run_experiments.py stage4                  # trains E F G H, scores all nine, money plot
+    python run_experiments.py refresh4                # add F, G to the trade-off sweep; redo verdict + money plot
 Outputs in runs/stage1/ (shared experiment folder: recipes, feature stats, all trained models, tables, figures)
 
 PSEUDOCODE FOR LATER STAGES
@@ -126,8 +127,9 @@ def stage1(smoke: bool = False, n_per_cell: int = 100, steps: int = 2000, batch:
     return summary
 
 
-def go_no_go(summary) -> str:
-    """Stage-1 check from PLAN.md: the reproduced RNN must beat no-processing and MCTR, and stay below the IRM."""
+def go_no_go(summary, header_only: bool = False) -> str:
+    """Stage-1 check from PLAN.md: the reproduced RNN must beat no-processing and MCTR, and stay below the IRM.
+    header_only=True: just the table of overall averages (used in the stage-4 verdict)."""
     t = summary.groupby("variant")[["stoi_mean", "ta_db_mean", "speech_preserved_mean"]].mean()
     get = lambda v, m: float(t.loc[v, m]) if v in t.index else float("nan")
     checks = [
@@ -136,10 +138,13 @@ def go_no_go(summary) -> str:
         ("C (RNN-3) STOI < I (ideal mask)", get("C", "stoi_mean") < get("I", "stoi_mean")),
         ("C removes more transient than B (dB)", get("C", "ta_db_mean") > get("B", "ta_db_mean")),
     ]
-    lines = ["Stage-1 go/no-go (averaged over all test conditions and STRs):"]
+    lines = ["Overall averages (all test conditions and STRs):" if header_only else
+             "Stage-1 go/no-go (averaged over all test conditions and STRs):"]
     for v in t.index:
-        lines.append(f"  {v} {VARIANTS[v][0]:12s} STOI {get(v, 'stoi_mean'):.3f}   transient attenuation "
+        lines.append(f"  {v} {VARIANTS[v][0]:14s} STOI {get(v, 'stoi_mean'):.3f}   transient attenuation "
                      f"{get(v, 'ta_db_mean'):5.1f} dB   speech preserved {get(v, 'speech_preserved_mean'):.3f}")
+    if header_only:
+        return "\n".join(lines) + "\n"
     lines += [f"  [{'PASS' if ok else 'FAIL'}] {name}" for name, ok in checks]
     lines.append("  => GO to stage 2" if all(ok for _, ok in checks) else "  => NO-GO: fix the baseline before stage 2")
     return "\n".join(lines) + "\n"
@@ -155,8 +160,8 @@ def plot_stage1(summary, out_path: Path, synthetic: bool = False, variants=("A",
     style["D"] = dict(label="Same RNN, continuous memory (D)", short="RNN-stream (D)", color="#6250d6",
                       lw=2.0, marker="o", ls="-", z=5)
     style["C"] = dict(STYLE["C"], label="Keshavarzi et al. 2021 RNN, reproduced (C)")
-    style["G"] = dict(label="Filterbank + belief network, no attention (G)", short="G", color="#e87ba4", lw=1.6, marker="v", ls="--", z=4)
-    style["F"] = dict(label="Belief network + attention, no filterbank (F)", short="F", color="#008300", lw=1.6, marker="P", ls="--", z=4)
+    from money_plot import ABLATION_STYLE
+    style.update(ABLATION_STYLE)          # G, F: greys + line style (colour-blind-safe next to C/E/H)
     conds = [c for c in ("seen", "unseen", "grandma") if c in set(summary["cond"])]
     titles = {"seen": "Transient types seen in training", "unseen": "Unseen transient types",
               "grandma": "Crumpling & crinkling (never trained on)"}
@@ -251,7 +256,35 @@ def paired_comparison(df, a: str = "H", against=("C", "D", "E"), conds=("seen", 
     return "\n".join(lines) + "\n"
 
 
-def tradeoff(corpus, rows, models, variants=("C", "D", "E", "H"), exponents=(0.5, 0.75, 1.0, 1.5, 2.0, 3.0),
+ABLATIONS = (  # (model, against, the question the difference answers)
+    ("H", "G", "does the attention gate help? (H minus G: same model, attention off)"),
+    ("H", "F", "does keeping the filterbank help? (H minus F: belief network without the raw 64 bands)"),
+    ("G", "E", "do belief-network features beat simply a bigger LSTM? (G minus E: no attention, size-matched)"),
+)
+
+
+def ablation_comparison(df) -> str:
+    """Paired tests for the three design questions (same test mixtures for every model)."""
+    lines = ["Ablations (paired, same test mixtures; difference = first model minus second):"]
+    for a, b, question in ABLATIONS:
+        lines.append(f" {question}")
+        lines += paired_comparison(df, a, against=(b,)).splitlines()[1:]
+    return "\n".join(lines) + "\n"
+
+
+def equal_quality_table(to, levels=None):
+    """Transient attenuation each model reaches when tuned (mask ** p) to the SAME speech-preserved level."""
+    import pandas as pd
+    from money_plot import _x_at
+    if levels is None:
+        levels = (float(to[(to.variant == "C") & (to.p == 1.0)].sp_mean.iloc[0]), 0.975, 0.965)
+    rows = []
+    for v in sorted(set(to.variant)):
+        rows.append({"variant": v, **{f"ta_db_at_sp_{y:.3f}": _x_at(to[to.variant == v], y) for y in levels}})
+    return pd.DataFrame(rows)
+
+
+def tradeoff(corpus, rows, models, variants=("C", "D", "E", "F", "G", "H"), exponents=(0.5, 0.75, 1.0, 1.5, 2.0, 3.0),
              cond="unseen", str_db=-15.0, workers=4):
     """Money-plot left panel: make each model more/less aggressive (mask ** p) -> attenuation vs speech kept."""
     import jax.numpy as jnp
@@ -301,23 +334,65 @@ def stage4(n_per_cell: int = 100, steps: int = 2000, batch: int = 16, seed: int 
     df.to_csv(run_dir / "stage4_results_per_utterance.csv", index=False)
     summary = em.aggregate(results)
     summary.to_csv(run_dir / "stage4_summary.csv", index=False)
-    verdict = go_no_go(summary) + "\n" + paired_comparison(df)
+    verdict = go_no_go(summary, header_only=True) + "\n" + paired_comparison(df) + "\n" + ablation_comparison(df)
     (run_dir / "stage4_verdict.txt").write_text(verdict)
     print(verdict)
-    plot_stage1(summary, run_dir / "stage4_results.png", variants=("A", "C", "D", "E", "H", "I"),
+    plot_stage1(summary, run_dir / "stage4_results.png", variants=("A", "C", "E", "H", "I"),
                 title="Stage 4 — belief network + attention (H) vs baselines (mean ± 95% CI over test sentences)")
     plot_stage1(summary, run_dir / "stage4_ablations.png", variants=("C", "F", "G", "H", "I"),
                 title="Stage 4 ablations — what each part of the proposed model contributes")
     to = tradeoff(corpus, rows, models)
     to.to_csv(run_dir / "tradeoff_unseen_str-15.csv", index=False)
+    eq = equal_quality_table(to)
+    eq.to_csv(run_dir / "equal_speech_quality.csv", index=False)
+    print("Transient attenuation (dB) at equal speech quality (unseen, STR -15 dB):\n" + eq.round(2).to_string(index=False))
     import money_plot
     print("money plot:", money_plot.make_money_plot(from_results=True, run_dir=run_dir))
+    print("ablation frontier:", money_plot.make_frontier_plot(run_dir, run_dir / "stage4_ablation_frontier.png"))
     return summary
+
+
+def load_models(run_dir: Path, variants, seed: int = 0) -> dict:
+    return {v: mv.Trained.load(run_dir / v / f"seed{seed}" / "best.pkl") for v in variants
+            if (run_dir / v / f"seed{seed}" / "best.pkl").exists()}
+
+
+def refresh_stage4(variants=("F", "G"), n_per_cell: int = 100):
+    """Add `variants` to the trade-off sweep (keeping rows already computed), then rewrite the verdict,
+    the equal-quality table and the money plot from the saved per-utterance results. No retraining."""
+    import pandas as pd
+    import money_plot
+    corpus = dm.load_corpus()
+    run_dir = tm.run_dir_for(corpus)
+    rows = select_test_rows(tm.get_recipes(corpus, run_dir), n_per_cell)
+    path = run_dir / "tradeoff_unseen_str-15.csv"
+    old = pd.read_csv(path) if path.exists() else pd.DataFrame(columns=["variant"])
+    todo = [v for v in variants if v not in set(old.variant)]
+    if todo:
+        new = tradeoff(corpus, rows, load_models(run_dir, todo), variants=todo)
+        old = pd.concat([old, new], ignore_index=True)
+        old.to_csv(path, index=False)
+    eq = equal_quality_table(old)
+    eq.to_csv(run_dir / "equal_speech_quality.csv", index=False)
+    print("Transient attenuation (dB) at equal speech quality (unseen, STR -15 dB):\n" + eq.round(2).to_string(index=False))
+    df = pd.read_csv(run_dir / "stage4_results_per_utterance.csv")
+    summary = pd.read_csv(run_dir / "stage4_summary.csv")
+    verdict = go_no_go(summary, header_only=True) + "\n" + paired_comparison(df) + "\n" + ablation_comparison(df)
+    (run_dir / "stage4_verdict.txt").write_text(verdict)
+    print(verdict)
+    print("money plot:", money_plot.make_money_plot(from_results=True, run_dir=run_dir))
+    print("ablation frontier:", money_plot.make_frontier_plot(run_dir, run_dir / "stage4_ablation_frontier.png"))
+    for name, vs, title in (
+            ("stage4_results.png", ("A", "C", "E", "H", "I"),
+             "Stage 4 — belief network + attention (H) vs baselines (mean ± 95% CI over test sentences)"),
+            ("stage4_ablations.png", ("C", "F", "G", "H", "I"),
+             "Stage 4 ablations — what each part of the proposed model contributes")):
+        plot_stage1(summary, run_dir / name, variants=vs, title=title)
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["stage1", "stage3", "stage4"])
+    ap.add_argument("stage", choices=["stage1", "stage3", "stage4", "refresh4"])
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--n", type=int, default=100, help="test sentences per (condition, STR) cell")
     ap.add_argument("--steps", type=int, default=2000)
@@ -328,5 +403,7 @@ if __name__ == "__main__":
         stage1(smoke=a.smoke, n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain)
     elif a.stage == "stage3":
         stage3(smoke=a.smoke)
+    elif a.stage == "refresh4":
+        refresh_stage4(n_per_cell=a.n)
     else:
         stage4(n_per_cell=a.n, steps=a.steps, batch=a.batch, retrain=a.retrain or a.smoke, smoke=a.smoke)

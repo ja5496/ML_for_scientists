@@ -40,9 +40,9 @@ waveform ─► [EAR] gammatone 64 bands (5 ms frames, 2.5 ms hop) ─┬──�
 | Part | Status |
 |---|---|
 | Stage 0–1: data (VCTK via your proposal's datashare link, FSD50K), mixing, front end, MCTR, baseline RNNs C/D, metrics | **implemented, run, results in `results/stage1/`** |
-| Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **implemented & tested; pretraining running on CPU** |
-| Stage 3: speech/transient memories (NMF) + go/no-go | **implemented & tested** (runs after stage 2) |
-| Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, money plot from data | **implemented & tested** (runs after stage 3) |
+| Stage 2: causal belief network (15 sub-networks), pretraining data (LibriSpeech dev-clean + FSD50K non-transient sounds/music) | **run; weights + diagnostics in `results/stage2_3/`** |
+| Stage 3: speech/transient memories (NMF) + go/no-go | **run: GO, 15/15 sub-networks separate speech from transients** |
+| Stage 4: online attention, variants E/F/G/H, scoring all nine, paired statistics, ablations, money plot from data | **run; results in `results/stage4/`** |
 | Stage 5 (end-to-end fine-tuning), streaming deployment check, HASPI/HASQI, PESQ | not yet |
 
 Everything runs on CPU; a GPU only makes it faster. Network hosts needed: `datashare.ed.ac.uk`, `zenodo.org`, `www.openslr.org`.
@@ -52,7 +52,8 @@ pip install -r requirements.txt
 python data_download.py                     # ~30 min: VCTK subset, FSD50K eval split, pretraining audio
 python run_experiments.py stage1 --smoke    # 2-minute check of the baseline pipeline on synthetic audio
 python run_experiments.py stage1            # trains C and D, scores A B C D I  (~45 min CPU)
-./run_pipeline.sh                           # stages 2–4 (~5 h CPU, resumable): pretrain DBN, memories, E–H, money plot
+./run_pipeline.sh                           # stages 2–4 (~4 h CPU, resumable): pretrain DBN, memories, E–H, money plot
+python run_experiments.py refresh4          # redo trade-off sweep / verdict / figures from saved stage-4 results
 python -m pytest -q                         # 23 tests: reconstruction, STR, causality of every model, CRBM, attention
 ```
 
@@ -77,7 +78,7 @@ python -m pytest -q                         # 23 tests: reconstruction, STR, cau
 | 14 | `evaluate_metrics.py` | STOI/ESTOI, PESQ, SI-SDR, HASPI/HASQI, transient attenuation, speech preserved |
 | 15 | `run_experiments.py` | The full experiment grid and ablations |
 | 16 | `test_causality.py` | Tests that nothing uses future audio |
-| 17 | `money_plot.py` | The headline figure (currently a sketch made from hypothetical numbers) |
+| 17 | `money_plot.py` | The headline figure: the hypothetical sketch, and the same figure drawn from real results |
 | – | `audio_store.py` | Packs thousands of clips into one file per split (fast loading) |
 | – | `synthetic_audio.py` | Fake speech/transients for smoke tests only — never results |
 | – | `optim.py` | Adam + gradient clipping (from Lab 2) |
@@ -88,7 +89,24 @@ Each `.py` file opens with **PLAIN WORDS** (for a human reader). Implemented fil
 built and any choices the papers left open; files for later stages still contain **PSEUDOCODE** for the
 implementing agent, with stubs that raise `NotImplementedError`.
 
-## Money plot (sketch)
+## First-pass results (CPU, 1 training seed, 1,800 test mixtures per model)
+
+![money plot from results](figures/money_plot_results.png)
+
+- **The proposed model (H) beats Keshavarzi's RNN (C).** STOI is +0.003–0.005 better in every condition
+  (p < 1e-11). On transient types never seen in training it removes +2.2 dB more transient, and +1.3 to +3.1 dB more
+  when both are tuned to damage speech equally. The biggest gains are on unseen impact sounds (knocks +3.4 dB).
+- **Against an LSTM of the same size and memory (E), the gain is small but consistent:** +0.4 to +0.85 dB at equal
+  speech quality, +0.0026 STOI on unseen types (p = 2e-14). With only one training seed, this needs seeds 1–2 to confirm.
+- **Ablations** (`results/stage4/stage4_ablation_frontier.png`): removing the filterbank (F) makes the model *worse
+  than the original RNN*, so the ear → cortex design is right. Removing attention (G) leaves a model that ties E; the attention
+  gate adds ~0.45 dB at equal speech quality.
+- **Crinkling** (grandma's complaint) is already the easiest category (C, E, G and H all remove 10–19 dB).
+  The new model's gains are on unseen impact sounds, not on crinkling.
+- Still far from the ideal mask (22 dB, STOI 0.980). Details and caveats: [`results/stage4/README.md`](results/stage4/README.md);
+  next steps: `PLAN.md` §9.
+
+## Money plot (sketch, made before any results)
 
 ![money plot sketch](figures/money_plot_sketch.png)
 

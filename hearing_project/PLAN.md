@@ -205,7 +205,7 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
   and MUSAN (11-GB download).
 - **CRBM:** causal convolution, probabilistic max-pooling (Lee et al. 2009) in both sampling and free energy,
   CD-1 implemented as autodiff of F(v0) − F(v1) with v1 fixed, Adam lr 1e-3, sparsity s = 0.05 / λ = 5 (Bellur).
-  Mean firing settles at ~10–14 % rather than 5 % (loss normalised per frame; still sparse). Gaussian visible
+  Mean firing settles at ~10–14 % in LSN11 and 4–8 % in layers 2–4 (target 5 %; loss normalised per frame). Gaussian visible
   units for LSN11, Bernoulli above. Up to 10 passes per sub-network with early stopping on held-out reconstruction.
 - **Bug caught before the long run:** pooled output was computed as sigmoid(log(1+S)) instead of S/(1+S)
   (always > 0.5); fixed and pinned by `test_dbn.py::test_pooling_values`.
@@ -218,3 +218,23 @@ Mixtures are generated on the fly (dynamic mixing) so every epoch sees new combi
   LayerNorm, then Keshavarzi's LSTM(128) → LSTM(64) → Dense(64). Belief network + memories frozen (stage 4).
 - **Variant E** is matched to H's *total* size (trainable mask net + frozen belief network).
 - **Causality** of every model (C, D, F, G, H) is tested end to end (`test_causality.py`).
+
+## 9. First-pass results (2026-11-18) and what to do next
+
+Full numbers and caveats: `results/stage2_3/README.md`, `results/stage4/README.md`, `figures/money_plot_results.png`.
+
+- **Stage 3 go/no-go: GO, 15/15.** Every sub-network separates held-out speech from held-out transients (gap 0.25–0.43).
+  The deepest, slowest sub-networks separate best.
+- **H beats Keshavarzi's RNN (C):** +0.003–0.005 STOI in every condition, +2.2 dB transient removed on unseen
+  types, and +1.3 to +3.1 dB at equal speech quality.
+- **Keep the filterbank (decision 1.1 confirmed):** the belief network alone (F) is worse than C.
+- **Against the fair control (E, same size and memory), the gain is small:** +0.4 to +0.85 dB at equal quality, +0.0026 STOI on
+  unseen types, one seed. The attention gate is worth ~0.45 dB at equal quality; without it the belief network ≈ E.
+- **Crinkling (the grandmother's complaint)** is already the easiest category (C, E, G and H all remove 10–19 dB);
+  the new model's gains are on unseen *impact* sounds (knock, slam, thud, hammer, cutlery).
+
+Next, in order of value per CPU-hour:
+1. Seeds 1–2 for C, E, G, H (~1.5 h): decides whether H > E is real. Add CIs to the equal-quality frontier by bootstrapping over sentences.
+2. Stage 5 fine-tuning of H (unfreeze the belief network at lr 1e-5): the frozen network was never told what the mask needs.
+3. Tune attention (α, β) on VALIDATION data: attention currently trades attenuation for speech preservation.
+4. A harder crinkling test (louder STRs, babble background) and HASPI with the Keshavarzi audiograms.

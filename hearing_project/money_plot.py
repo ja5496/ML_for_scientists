@@ -59,6 +59,14 @@ STYLE = {
     "I": dict(label="Ideal ratio mask (ceiling)", short="Ideal mask (ceiling)",
               color=INK, lw=1.6, marker="*", ls="--", z=3),
 }
+# Ablations of H: neutral greys told apart by line style + direct labels (only 3 hues stay
+# colour-blind-safe when lines cross, and those are reserved for H, E and C).
+ABLATION_STYLE = {
+    "G": dict(label="Proposed without attention (G)", short="No attention (G)",
+              color=INK_2, lw=1.8, marker="v", ls="-.", z=4),
+    "F": dict(label="Proposed without the filterbank (F)", short="No filterbank (F)",
+              color=MUTED, lw=1.8, marker="P", ls=":", z=4),
+}
 
 
 ###########################################################
@@ -238,8 +246,13 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
         axL.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], zorder=st["z"], label=st["label"], marker=".", ms=5)
         op = c[c.p == 1.0]
         axL.plot(op.ta_db_mean, op.sp_mean, marker=st["marker"], ms=10, color=st["color"], mec=SURFACE, mew=2, zorder=st["z"] + 1)
-        axL.annotate(st["short"], (c.ta_db_mean.iloc[-1], c.sp_mean.iloc[-1]), xytext=(6, 0), textcoords="offset points",
-                     va="center", fontsize=10, color=INK)
+        if v == "C":   # label mid-curve, on its open left side (E/H pass right of C's end, the text box sits below)
+            k = c[c.p == 2.0] if (c.p == 2.0).any() else c.iloc[[-1]]
+            axL.annotate(st["short"], (float(k.ta_db_mean.iloc[0]), float(k.sp_mean.iloc[0])), xytext=(-10, 0),
+                         textcoords="offset points", va="center", ha="right", fontsize=10, color=INK)
+        else:
+            axL.annotate(st["short"], (c.ta_db_mean.iloc[-1], c.sp_mean.iloc[-1]), xytext=(6, 0),
+                         textcoords="offset points", va="center", ha="left", fontsize=10, color=INK)
     for v, mk, lbl, off in (("B", "D", "MCTR (B)", (8, -16)), ("I", "*", "Ideal mask", (6, 6))):
         d = cell(v)
         if not d.empty:
@@ -253,12 +266,17 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
     if not c_op.empty and "H" in set(to.variant):
         y_ref = float(c_op.sp_mean.iloc[0])
         xc, xh = _x_at(to[to.variant == "C"], y_ref), _x_at(to[to.variant == "H"], y_ref)
+        xe = _x_at(to[to.variant == "E"], y_ref) if "E" in set(to.variant) else np.nan
         if np.isfinite(xc) and np.isfinite(xh):
             axL.axhline(y_ref, color=MUTED, lw=0.8, ls=(0, (2, 3)), zorder=1)
             axL.annotate("", xy=(xh, y_ref), xytext=(xc, y_ref),
                          arrowprops=dict(arrowstyle="-|>", color=INK, lw=1.8, mutation_scale=16), zorder=9)
-            axL.text((xc + xh) / 2, y_ref + 0.002, f"{xh - xc:+.1f} dB transient attenuation\nat equal speech quality (H vs C)",
-                     ha="center", va="bottom", fontsize=10.5, color=INK, fontweight="bold", zorder=9)
+            msg = f"At equal speech quality (dotted line), H removes\n{xh - xc:+.1f} dB more transient than the original RNN (C)"
+            if np.isfinite(xe):
+                msg += f"\n{xh - xe:+.1f} dB more than the size-matched LSTM (E)"
+            axL.text(0.03, 0.04, msg, transform=axL.transAxes, ha="left", va="bottom", fontsize=10, color=INK,
+                     linespacing=1.5, zorder=9,
+                     bbox=dict(boxstyle="round,pad=0.5", fc=SURFACE, ec=GRID, lw=1))
     axL.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
     axL.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
     axL.set_title("A   Transient removed vs speech kept", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=40)
@@ -303,6 +321,37 @@ def make_money_plot_from_results(run_dir: Path = None, out_path: Path = Path(__f
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     if not smoke:
         fig.savefig(run_dir / out_path.name, dpi=200, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
+
+
+def make_frontier_plot(run_dir: Path, out_path: Path, variants=("C", "E", "F", "G", "H")) -> Path:
+    """Ablation frontier: transient removed vs speech kept for H and its ablations (unseen, STR -15 dB).
+    Raw averages can mislead (a gentler model removes less AND keeps more); the frontier compares at equal quality."""
+    import pandas as pd
+    to = pd.read_csv(Path(run_dir) / "tradeoff_unseen_str-15.csv")
+    style = {**STYLE, **ABLATION_STYLE}
+    fig, ax = plt.subplots(figsize=(8.4, 6.2), facecolor=SURFACE)
+    _style_axes(ax)
+    for v in variants:
+        c = to[to.variant == v].sort_values("p")
+        if c.empty:
+            continue
+        st = style[v]
+        lab = st["label"] if f"({v})" in st["label"] else f"{st['label']} ({v})"
+        ax.plot(c.ta_db_mean, c.sp_mean, color=st["color"], lw=st["lw"], ls=st["ls"], zorder=st["z"],
+                label=lab, marker=".", ms=5)
+        op = c[c.p == 1.0]
+        ax.plot(op.ta_db_mean, op.sp_mean, marker=st["marker"], ms=10, color=st["color"], mec=SURFACE, mew=2,
+                zorder=st["z"] + 1, ls="none")
+    ax.set_xlabel("Transient attenuation (dB)   →  more comfortable", fontsize=11, color=INK)
+    ax.set_ylabel("Speech preserved (STOI of masked clean speech)", fontsize=11, color=INK)
+    ax.set_title("Ablations at equal speech quality", loc="left", fontsize=12.5, color=INK, fontweight="bold", pad=34)
+    ax.text(0, 1.02, "Unseen transient types, STR −15 dB. Big marker = model as trained; line = mask ** p,\n"
+            "p = 0.5 … 3. Further right at the same height = more transient removed for the same speech damage.",
+            transform=ax.transAxes, fontsize=9.5, color=INK_2, va="bottom")
+    ax.legend(loc="upper right", frameon=False, fontsize=9.5, labelcolor=INK)   # 5 crossing lines: legend, not end labels
+    fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return out_path
 
